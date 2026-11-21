@@ -1,6 +1,6 @@
 # Hachi · 小八
 
-![Hachi, a seated dog with its tongue out](docs/hachi.png)
+![Hachi, a Shiba Inu wagging its tail](docs/assets/hachi-logo.gif)
 
 Hachi (ハチ) is a little watchdog for macOS. The menu-bar dog continuously wags its tail while running and stays still with macOS Reduce Motion. The animation is decorative, not a network health indicator. [Read the market research and sources](docs/market-research.md).
 
