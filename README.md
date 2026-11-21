@@ -1,4 +1,8 @@
-# AI Egress Guard · 帆盾
+# Hachi · 小八
+
+![Hachi, a seated dog with its tongue out](docs/hachi.png)
+
+Hachi (ハチ) is a little watchdog for macOS. The menu-bar dog briefly wags its tail about every 24 seconds and respects macOS Reduce Motion. [Read the market research and sources](docs/market-research.md).
 
 Private development prototype. A native macOS menu-bar app; it observes macOS network-path availability and optionally invokes already-installed `claude-safe` / `codex-safe` preflight adapters on demand. It does **not** enforce runtime network policy or cover browser authorization or MCP. It has no login-item registration, telemetry, automatic credential use, runtime blocking or third-party dependency. Network availability is not proof of a verified egress IP.
 
@@ -9,7 +13,8 @@ Requirements: macOS, Apple command-line tools, and Python 3.9+.
 ```sh
 python3 build.py
 python3 tests/lab.py
-open 'build/AI Egress Guard.app'
+python3 tests/branding.py
+open 'build/Hachi.app'
 ```
 
 The test harness starts a real HTTP observer on loopback. It never runs an official provider client, reads a provider credential or sends traffic off-device. `tests/check.py` is an optional manual preflight smoke test for machines with the two local adapters, not part of acceptance or CI. Neither test represents a provider risk or ban outcome.

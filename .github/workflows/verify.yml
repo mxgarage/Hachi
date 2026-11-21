@@ -10,3 +10,4 @@ jobs:
       - uses: actions/checkout@v4
       - run: python3 build.py
       - run: python3 tests/lab.py
+      - run: python3 tests/branding.py

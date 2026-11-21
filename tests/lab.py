@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import threading
 
-APP = Path(__file__).resolve().parents[1] / 'build/AI Egress Guard.app/Contents/MacOS/AI-Egress-Guard'
+APP = Path(__file__).resolve().parents[1] / 'build/Hachi.app/Contents/MacOS/Hachi'
 CASES = dict(approved=(200, {'route': 'lab-approved'}, 'matched'), drift=(200, {'route': 'lab-other'}, 'mismatch'), malformed=(200, 'not-json', 'unknown'), outage=(503, {}, 'unknown'), redirect=(302, {}, 'unknown'))
 seen = []
 

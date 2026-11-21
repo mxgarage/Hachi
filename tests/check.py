@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import subprocess
 
-APP = Path(__file__).resolve().parents[1] / 'build/AI Egress Guard.app/Contents/MacOS/AI-Egress-Guard'
+APP = Path(__file__).resolve().parents[1] / 'build/Hachi.app/Contents/MacOS/Hachi'
 
 def check(provider):
     r = subprocess.run([str(APP), '--check', provider], capture_output=True, text=True, timeout=45)

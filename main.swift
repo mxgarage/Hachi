@@ -22,24 +22,62 @@ func labProbe(_ rawURL: String, expected: String) -> String? {
     } catch { return "unknown" }
 }
 
-func sailShield(size: CGFloat, badge: Bool) -> NSImage {
+func wagPose(elapsed: TimeInterval, reduced: Bool) -> Int {
+    guard !reduced, elapsed.isFinite, elapsed >= 24 else { return 0 }
+    let phase = elapsed.truncatingRemainder(dividingBy: 24)
+    guard phase < 0.9 else { return 0 }
+    return Int(phase * 8) % 2 == 0 ? 1 : -1
+}
+
+func hachiIcon(size: CGFloat, badge: Bool, pose: Int = 0) -> NSImage {
     NSImage(size: NSSize(width: size, height: size), flipped: true) { bounds in
-        let scale = size / 32
-        func point(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: x * scale, y: y * scale) }
+        let s = size / 32
+        func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: x * s, y: y * s) }
+        func r(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> NSRect { NSRect(x: x*s, y: y*s, width: w*s, height: h*s) }
+        let fur = NSColor(srgbRed: 0.96, green: 0.68, blue: 0.37, alpha: 1)
+        let cream = NSColor(srgbRed: 1, green: 0.90, blue: 0.73, alpha: 1)
+        let dark = NSColor(srgbRed: 0.19, green: 0.13, blue: 0.14, alpha: 1)
+        func shape(_ color: NSColor, _ draw: (NSBezierPath) -> Void) {
+            let path = NSBezierPath(); draw(path); path.close(); color.setFill(); path.fill()
+        }
+        func oval(_ rect: NSRect, _ color: NSColor) { color.setFill(); NSBezierPath(ovalIn: rect).fill() }
+        func cut(_ draw: () -> Void) {
+            guard let cg = NSGraphicsContext.current?.cgContext else { return }
+            cg.saveGState(); cg.setBlendMode(.clear); draw(); cg.restoreGState()
+        }
         if badge {
-            NSColor(srgbRed: 0.05, green: 0.19, blue: 0.22, alpha: 1).setFill()
-            NSBezierPath(roundedRect: bounds.insetBy(dx: 1.5 * scale, dy: 1.5 * scale), xRadius: 7 * scale, yRadius: 7 * scale).fill()
-            NSColor(srgbRed: 0.55, green: 0.94, blue: 0.83, alpha: 1).set()
-        } else { NSColor.black.set() }
-        let shield = NSBezierPath(); shield.lineWidth = 2.1 * scale
-        shield.move(to: point(16, 3)); shield.line(to: point(27, 7)); shield.line(to: point(26, 17))
-        shield.curve(to: point(16, 29), controlPoint1: point(25, 22), controlPoint2: point(21, 26))
-        shield.curve(to: point(6, 17), controlPoint1: point(11, 26), controlPoint2: point(7, 22))
-        shield.line(to: point(5, 7)); shield.close(); shield.stroke()
-        let sail = NSBezierPath(); sail.move(to: point(16, 8)); sail.line(to: point(22, 18)); sail.line(to: point(16, 18)); sail.close(); sail.fill()
-        let jib = NSBezierPath(); jib.move(to: point(14.5, 12)); jib.line(to: point(10, 18)); jib.line(to: point(14.5, 18)); jib.close(); jib.fill()
-        let hull = NSBezierPath(); hull.move(to: point(10, 20)); hull.line(to: point(22, 20)); hull.line(to: point(19, 23)); hull.line(to: point(13, 23)); hull.close(); hull.fill()
+            NSColor(srgbRed: 0.13, green: 0.28, blue: 0.27, alpha: 1).setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: s, dy: s), xRadius: 7*s, yRadius: 7*s).fill()
+        }
+        let silhouette = badge ? fur : .black
+        let shift = CGFloat(pose)*2.8
+        let tail = NSBezierPath(); tail.lineWidth = 3.3*s; tail.lineCapStyle = .round
+        tail.move(to: p(21, 25)); tail.curve(to: p(28, 18+shift), controlPoint1: p(27, 27), controlPoint2: p(31, 22+shift))
+        silhouette.setStroke(); tail.stroke()
+        oval(r(9, 14, 14, 14), silhouette)
+        oval(r(8, 24, 8, 4.5), silhouette); oval(r(16, 24, 8, 4.5), silhouette)
+        shape(silhouette) { q in
+            q.move(to: p(7, 10)); q.line(to: p(7.8, 3.5)); q.quad(to: p(9.2, 3.4), control: p(8, 2.3)); q.line(to: p(13, 7))
+            q.quad(to: p(19, 7), control: p(16, 5.7)); q.line(to: p(23, 3.4)); q.quad(to: p(24.3, 3.5), control: p(24.2, 2.5))
+            q.line(to: p(25, 10)); q.quad(to: p(25.7, 13.4), control: p(25.7, 11.5)); q.quad(to: p(16, 20), control: p(25.7, 20));
+            q.quad(to: p(6.3, 13.4), control: p(6.3, 20)); q.quad(to: p(7, 10), control: p(6.3, 11.5))
+        }
+        if badge { oval(r(10, 12.6, 12, 6.5), cream); oval(r(12, 20.5, 8, 5.5), cream) }
+        let eyes = { oval(r(10.8, 10.5, 1.9, 2.3), dark); oval(r(19.3, 10.5, 1.9, 2.3), dark) }
+        let mouth = { oval(r(13.4, 15, 5.2, 3.5), dark) }
+        if badge { eyes(); mouth(); oval(r(14.4, 13, 3.2, 1.75), dark) } else { cut(eyes); cut(mouth) }
+        let tongue = r(14.6, 17.2, 2.8, 3.5)
+        (badge ? NSColor(srgbRed: 0.98, green: 0.41, blue: 0.48, alpha: 1) : .black).setFill()
+        NSBezierPath(roundedRect: tongue, xRadius: 1.35*s, yRadius: 1.35*s).fill()
         return true
+    }
+}
+
+private extension NSBezierPath {
+    func quad(to end: NSPoint, control: NSPoint) {
+        let start = currentPoint
+        func towards(_ p: NSPoint) -> NSPoint { NSPoint(x: p.x + (control.x-p.x)*2/3, y: p.y + (control.y-p.y)*2/3) }
+        curve(to: end, controlPoint1: towards(start), controlPoint2: towards(end))
     }
 }
 
@@ -84,10 +122,18 @@ final class MenuAgent: NSObject, NSApplicationDelegate {
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let pathMonitor = NWPathMonitor()
     let pathStatus = NSMenuItem(title: "系统网络：等待状态", action: nil, keyEquivalent: "")
+    let startedAt = ProcessInfo.processInfo.systemUptime
+    var wagTimer: Timer?
+    var frames: [Int: NSImage] = [:]
+    var currentPose = 0
     func applicationDidFinishLaunching(_ note: Notification) {
-        let icon = sailShield(size: 19, badge: false); icon.isTemplate = true
-        item.button?.image = icon
-        item.button?.toolTip = "AI 出口 · 观察模式（不拦截）"
+        for pose in [-1, 0, 1] {
+            let icon = hachiIcon(size: 19, badge: false, pose: pose); icon.isTemplate = true; frames[pose] = icon
+        }
+        item.button?.image = frames[0]
+        item.button?.toolTip = "Hachi · 观察模式（不拦截）"
+        item.button?.setAccessibilityLabel("Hachi 小八")
+        scheduleTail(after: max(0.02, 24 - (ProcessInfo.processInfo.systemUptime - startedAt)))
         let menu = NSMenu()
         let scope = NSMenuItem(title: "观察模式 · 不拦截运行中流量", action: nil, keyEquivalent: "")
         let uncovered = NSMenuItem(title: "浏览器授权 / MCP：未覆盖", action: nil, keyEquivalent: "")
@@ -105,16 +151,31 @@ final class MenuAgent: NSObject, NSApplicationDelegate {
         }
         pathMonitor.start(queue: DispatchQueue(label: "app.egress.path-observer"))
     }
-    func applicationWillTerminate(_ notification: Notification) { pathMonitor.cancel() }
+    private func scheduleTail(after delay: TimeInterval) {
+        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in self?.refreshTail() }
+        timer.tolerance = min(0.015, delay / 4)
+        wagTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+    private func refreshTail() {
+        let elapsed = ProcessInfo.processInfo.systemUptime - startedAt
+        let phase = elapsed.truncatingRemainder(dividingBy: 24)
+        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let pose = wagPose(elapsed: elapsed, reduced: reduced)
+        if pose != currentPose { currentPose = pose; item.button?.image = frames[pose] }
+        let next = pose == 0 ? 24 - phase : min(0.9 - phase, (floor(phase * 8) + 1) / 8 - phase)
+        scheduleTail(after: max(0.02, next))
+    }
+    func applicationWillTerminate(_ notification: Notification) { wagTimer?.invalidate(); pathMonitor.cancel() }
     @objc func runCheck(_ sender: NSMenuItem) {
         guard let provider = sender.representedObject as? String else { return }
         sender.isEnabled = false
-        item.button?.toolTip = "AI 出口 · 预检中"
+        item.button?.toolTip = "Hachi · 预检中"
         DispatchQueue.global(qos: .userInitiated).async {
             let result = check(provider)
             DispatchQueue.main.async {
                 sender.isEnabled = true
-                self.item.button?.toolTip = "AI 出口 · 观察模式（不拦截）"
+                self.item.button?.toolTip = "Hachi · 观察模式（不拦截）"
                 let alert = NSAlert()
                 alert.messageText = "\(provider.capitalized)：\(result.status == "passed" ? "预检通过" : "预检未通过")"
                 alert.informativeText = result.evidence + "\n\n未启动客户端。浏览器 OAuth、MCP 和运行中拦截未覆盖。"
@@ -132,8 +193,13 @@ if !args.isEmpty {
         let data = try JSONEncoder().encode(["status": status, "mode": "synthetic_probe_only"])
         print(String(decoding: data, as: UTF8.self)); exit(0)
     }
-    if args.count == 3, args[0] == "--draw-icon", let size = Int(args[1]), (16...1024).contains(size),
-       let tiff = sailShield(size: CGFloat(size), badge: true).tiffRepresentation,
+    if args.count == 3, args[0] == "--wag-frame", let elapsed = Double(args[1]), let reduced = Bool(args[2]) {
+        let data = try JSONEncoder().encode(["pose": wagPose(elapsed: elapsed, reduced: reduced)])
+        print(String(decoding: data, as: UTF8.self)); exit(0)
+    }
+    if (args.count == 3 || args.count == 4), args[0] == "--draw-icon", let size = Int(args[1]), (16...1024).contains(size),
+       let pose = args.count == 4 ? Int(args[3]) : 0, (-1...1).contains(pose),
+       let tiff = hachiIcon(size: CGFloat(size), badge: true, pose: pose).tiffRepresentation,
        let bitmap = NSBitmapImageRep(data: tiff), let png = bitmap.representation(using: .png, properties: [:]) {
         try png.write(to: URL(fileURLWithPath: args[2])); exit(0)
     }
