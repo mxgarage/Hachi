@@ -69,28 +69,45 @@ func hachiIcon(size: CGFloat, badge: Bool, pose: Int = 0) -> NSImage {
         silhouette.setStroke(); tail.stroke()
         oval(r(9, 14, 14, 14), silhouette)
         oval(r(8, 24, 8, 4.5), silhouette); oval(r(16, 24, 8, 4.5), silhouette)
+        if !badge {
+            // Low, rounded floppy ears and a broad muzzle read as a dog even at 19 pt.
+            oval(r(7.4, 4.3, 17.2, 15.9), silhouette)
+            for side in [CGFloat(1), -1] {
+                func ear(_ x: CGFloat, _ y: CGFloat) -> NSPoint { p(16 + side * (x - 16), y) }
+                shape(silhouette) { q in
+                    q.move(to: ear(9.8, 5.3))
+                    q.curve(to: ear(3.9, 16.6), controlPoint1: ear(4.8, 5), controlPoint2: ear(3.1, 11.7))
+                    q.curve(to: ear(8.7, 18.6), controlPoint1: ear(4.2, 19.2), controlPoint2: ear(7.5, 20))
+                    q.curve(to: ear(9.8, 5.3), controlPoint1: ear(11.2, 14.2), controlPoint2: ear(9.2, 9))
+                }
+            }
+            oval(r(8.5, 12.8, 15, 8.3), silhouette)
+            cut {
+                oval(r(10.6, 9.8, 2.05, 2.2), dark); oval(r(19.35, 9.8, 2.05, 2.2), dark)
+                oval(r(13.7, 13, 4.6, 2.5), dark)
+                shape(dark) { q in
+                    q.move(to: p(11.1, 16.4)); q.quad(to: p(16, 17.5), control: p(13.4, 17.5))
+                    q.quad(to: p(20.9, 16.4), control: p(18.6, 17.5))
+                    q.quad(to: p(16, 21.1), control: p(19.4, 20.6))
+                    q.quad(to: p(11.1, 16.4), control: p(12.6, 20.6))
+                }
+            }
+            silhouette.setFill()
+            NSBezierPath(roundedRect: r(14.75, 16.5, 2.5, 3.4), xRadius: 1.25*s, yRadius: 1.25*s).fill()
+            return true
+        }
         shape(silhouette) { q in
             q.move(to: p(7, 10)); q.line(to: p(7.8, 3.5)); q.quad(to: p(9.2, 3.4), control: p(8, 2.3)); q.line(to: p(13, 7))
             q.quad(to: p(19, 7), control: p(16, 5.7)); q.line(to: p(23, 3.4)); q.quad(to: p(24.3, 3.5), control: p(24.2, 2.5))
             q.line(to: p(25, 10)); q.quad(to: p(25.7, 13.4), control: p(25.7, 11.5)); q.quad(to: p(16, 20), control: p(25.7, 20));
             q.quad(to: p(6.3, 13.4), control: p(6.3, 20)); q.quad(to: p(7, 10), control: p(6.3, 11.5))
         }
-        if badge { oval(r(10, 12.6, 12, 6.5), cream); oval(r(12, 20.5, 8, 5.5), cream) }
-        let eyes = { oval(r(10.8, 10.5, 1.9, 2.3), dark); oval(r(19.3, 10.5, 1.9, 2.3), dark) }
-        let mouth = { oval(r(13.4, 15, 5.2, 3.5), dark) }
-        if badge {
-            eyes(); mouth(); oval(r(14.4, 13, 3.2, 1.75), dark)
-        } else {
-            // Negative space around the tongue has to survive at the actual menu-bar size.
-            cut {
-                eyes()
-                NSBezierPath(roundedRect: r(11, 14.7, 10, 4.6), xRadius: 2.3*s, yRadius: 2.3*s).fill()
-                NSBezierPath(roundedRect: r(11.5, 17.0, 9, 8), xRadius: 3.6*s, yRadius: 3.6*s).fill()
-            }
-        }
-        let tongue = badge ? r(14.6, 17.2, 2.8, 3.5) : r(13.8, 16.1, 4.4, 7.2)
-        (badge ? NSColor(srgbRed: 0.98, green: 0.41, blue: 0.48, alpha: 1) : .black).setFill()
-        let radius = (badge ? 1.35 : 2.2) * s
+        oval(r(10, 12.6, 12, 6.5), cream); oval(r(12, 20.5, 8, 5.5), cream)
+        oval(r(10.8, 10.5, 1.9, 2.3), dark); oval(r(19.3, 10.5, 1.9, 2.3), dark)
+        oval(r(13.4, 15, 5.2, 3.5), dark); oval(r(14.4, 13, 3.2, 1.75), dark)
+        let tongue = r(14.6, 17.2, 2.8, 3.5)
+        NSColor(srgbRed: 0.98, green: 0.41, blue: 0.48, alpha: 1).setFill()
+        let radius = 1.35 * s
         NSBezierPath(roundedRect: tongue, xRadius: radius, yRadius: radius).fill()
         return true
     }
