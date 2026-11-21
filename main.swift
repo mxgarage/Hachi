@@ -64,38 +64,38 @@ func hachiIcon(size: CGFloat, badge: Bool, pose: Int = 0) -> NSImage {
             let dx = (x - 21) * s, dy = (y - 25) * s
             return NSPoint(x: pivot.x + dx*cos(angle) - dy*sin(angle), y: pivot.y + dx*sin(angle) + dy*cos(angle))
         }
-        let tail = NSBezierPath(); tail.lineWidth = 3.3*s; tail.lineCapStyle = .round
-        tail.move(to: pivot); tail.curve(to: tailPoint(28, 18), controlPoint1: tailPoint(27, 27), controlPoint2: tailPoint(31, 22))
+        let tail = NSBezierPath(); tail.lineWidth = (badge ? 3.3 : 4.1)*s; tail.lineCapStyle = .round
+        tail.move(to: pivot)
+        if badge { tail.curve(to: tailPoint(28, 18), controlPoint1: tailPoint(27, 27), controlPoint2: tailPoint(31, 22)) }
+        else { tail.curve(to: tailPoint(28.5, 21.5), controlPoint1: tailPoint(25, 27), controlPoint2: tailPoint(28, 25)) }
         silhouette.setStroke(); tail.stroke()
-        oval(r(9, 14, 14, 14), silhouette)
-        oval(r(8, 24, 8, 4.5), silhouette); oval(r(16, 24, 8, 4.5), silhouette)
         if !badge {
-            // Low, rounded floppy ears and a broad muzzle read as a dog even at 19 pt.
-            oval(r(7.4, 4.3, 17.2, 15.9), silhouette)
-            for side in [CGFloat(1), -1] {
-                func ear(_ x: CGFloat, _ y: CGFloat) -> NSPoint { p(16 + side * (x - 16), y) }
-                shape(silhouette) { q in
-                    q.move(to: ear(9.8, 5.3))
-                    q.curve(to: ear(3.9, 16.6), controlPoint1: ear(4.8, 5), controlPoint2: ear(3.1, 11.7))
-                    q.curve(to: ear(8.7, 18.6), controlPoint1: ear(4.2, 19.2), controlPoint2: ear(7.5, 20))
-                    q.curve(to: ear(9.8, 5.3), controlPoint1: ear(11.2, 14.2), controlPoint2: ear(9.2, 9))
-                }
+            // Profile: blunt snout, one long ear, upright foreleg and seated haunch.
+            shape(silhouette) { q in
+                q.move(to: p(2.4, 10.8)); q.line(to: p(8, 10.8)); q.line(to: p(9.5, 6.6))
+                q.curve(to: p(19.6, 5.7), controlPoint1: p(11, 3.6), controlPoint2: p(17, 3.5))
+                q.curve(to: p(21.7, 14.4), controlPoint1: p(22.2, 7.2), controlPoint2: p(22.5, 11.8))
+                q.curve(to: p(25, 24.5), controlPoint1: p(22.7, 18.8), controlPoint2: p(25.6, 20.5))
+                q.quad(to: p(20.1, 28.3), control: p(24.6, 28.3)); q.line(to: p(16.2, 28.3))
+                q.line(to: p(16.2, 23)); q.line(to: p(14.9, 23)); q.line(to: p(13.6, 27.5))
+                q.quad(to: p(11.7, 28.3), control: p(13.2, 28.3)); q.line(to: p(8.7, 28.3))
+                q.quad(to: p(8.2, 25.8), control: p(7, 27.7)); q.line(to: p(10.5, 24.8)); q.line(to: p(10.8, 16.6))
+                q.line(to: p(6.4, 16.6)); q.quad(to: p(2.4, 14), control: p(3.1, 16.2))
             }
-            oval(r(8.5, 12.8, 15, 8.3), silhouette)
             cut {
-                oval(r(10.6, 9.8, 2.05, 2.2), dark); oval(r(19.35, 9.8, 2.05, 2.2), dark)
-                oval(r(13.7, 13, 4.6, 2.5), dark)
-                shape(dark) { q in
-                    q.move(to: p(11.1, 16.4)); q.quad(to: p(16, 17.5), control: p(13.4, 17.5))
-                    q.quad(to: p(20.9, 16.4), control: p(18.6, 17.5))
-                    q.quad(to: p(16, 21.1), control: p(19.4, 20.6))
-                    q.quad(to: p(11.1, 16.4), control: p(12.6, 20.6))
-                }
+                oval(r(11.3, 8.4, 2.35, 2.45), dark)
+                let ear = NSBezierPath(); ear.lineWidth = 1.65*s; ear.lineCapStyle = .round
+                ear.move(to: p(16.2, 7.4)); ear.curve(to: p(17.3, 15.2), controlPoint1: p(15.1, 11), controlPoint2: p(15.4, 14.7))
+                ear.quad(to: p(19.8, 12.4), control: p(19.1, 16.1)); ear.stroke()
+                let mouth = NSBezierPath(); mouth.lineWidth = 1.05*s; mouth.lineCapStyle = .round
+                mouth.move(to: p(3.5, 14)); mouth.quad(to: p(8.7, 14.2), control: p(6, 15)); mouth.stroke()
             }
             silhouette.setFill()
-            NSBezierPath(roundedRect: r(14.75, 16.5, 2.5, 3.4), xRadius: 1.25*s, yRadius: 1.25*s).fill()
+            NSBezierPath(roundedRect: r(6.8, 15.8, 2.05, 2.4), xRadius: 1*s, yRadius: 1*s).fill()
             return true
         }
+        oval(r(9, 14, 14, 14), silhouette)
+        oval(r(8, 24, 8, 4.5), silhouette); oval(r(16, 24, 8, 4.5), silhouette)
         shape(silhouette) { q in
             q.move(to: p(7, 10)); q.line(to: p(7.8, 3.5)); q.quad(to: p(9.2, 3.4), control: p(8, 2.3)); q.line(to: p(13, 7))
             q.quad(to: p(19, 7), control: p(16, 5.7)); q.line(to: p(23, 3.4)); q.quad(to: p(24.3, 3.5), control: p(24.2, 2.5))
