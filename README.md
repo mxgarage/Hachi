@@ -2,7 +2,7 @@
 
 ![Hachi, a seated dog with its tongue out](docs/hachi.png)
 
-Hachi (ハチ) is a little watchdog for macOS. The menu-bar dog briefly wags its tail about every 24 seconds and respects macOS Reduce Motion. [Read the market research and sources](docs/market-research.md).
+Hachi (ハチ) is a little watchdog for macOS. The menu-bar dog continuously wags its tail while running and stays still with macOS Reduce Motion. The animation is decorative, not a network health indicator. [Read the market research and sources](docs/market-research.md).
 
 Private development prototype. A native macOS menu-bar app; it observes macOS network-path availability and optionally invokes already-installed `claude-safe` / `codex-safe` preflight adapters on demand. It does **not** enforce runtime network policy or cover browser authorization or MCP. It has no login-item registration, telemetry, automatic credential use, runtime blocking or third-party dependency. Network availability is not proof of a verified egress IP.
 

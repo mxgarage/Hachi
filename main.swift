@@ -22,17 +22,14 @@ func labProbe(_ rawURL: String, expected: String) -> String? {
     } catch { return "unknown" }
 }
 
-private let wagInterval: TimeInterval = 24
-private let wagDuration: TimeInterval = 1.2
+private let wagPeriod: TimeInterval = 0.9
 private let frameInterval: TimeInterval = 1.0 / 30
 private let maximumWagAngle = 16
 
 func wagPose(elapsed: TimeInterval, reduced: Bool) -> Int {
-    guard !reduced, elapsed.isFinite, elapsed >= wagInterval else { return 0 }
-    let progress = elapsed.truncatingRemainder(dividingBy: wagInterval) / wagDuration
-    guard progress < 1 else { return 0 }
-    let envelope = sin(.pi * progress)
-    let angle = Double(maximumWagAngle) * envelope * envelope * sin(5 * .pi * progress)
+    guard !reduced, elapsed.isFinite, elapsed >= 0 else { return 0 }
+    let progress = elapsed.truncatingRemainder(dividingBy: wagPeriod) / wagPeriod
+    let angle = Double(maximumWagAngle) * sin(2 * .pi * progress)
     return Int(angle.rounded())
 }
 
@@ -164,13 +161,17 @@ final class MenuAgent: NSObject, NSApplicationDelegate {
     let pathStatus = NSMenuItem(title: "系统网络：等待状态", action: nil, keyEquivalent: "")
     let startedAt = ProcessInfo.processInfo.systemUptime
     var wagTimer: Timer?
+    var motionObserver: NSObjectProtocol?
     var frames: [Int: NSImage] = [:]
     var currentPose = 0
     func applicationDidFinishLaunching(_ note: Notification) {
         showTail(pose: 0)
         item.button?.toolTip = "Hachi · 观察模式（不拦截）"
         item.button?.setAccessibilityLabel("Hachi 小八")
-        scheduleTail(after: max(0.001, wagInterval - (ProcessInfo.processInfo.systemUptime - startedAt)))
+        motionObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.updateTailAnimation() }
+        updateTailAnimation()
         let menu = NSMenu()
         let scope = NSMenuItem(title: "观察模式 · 不拦截运行中流量", action: nil, keyEquivalent: "")
         let uncovered = NSMenuItem(title: "浏览器授权 / MCP：未覆盖", action: nil, keyEquivalent: "")
@@ -188,20 +189,22 @@ final class MenuAgent: NSObject, NSApplicationDelegate {
         }
         pathMonitor.start(queue: DispatchQueue(label: "app.egress.path-observer"))
     }
-    private func scheduleTail(after delay: TimeInterval) {
-        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in self?.refreshTail() }
-        timer.tolerance = min(0.015, delay / 4)
+    private func updateTailAnimation() {
+        wagTimer?.invalidate()
+        wagTimer = nil
+        refreshTail()
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        let timer = Timer(timeInterval: frameInterval, repeats: true) { [weak self] _ in self?.refreshTail() }
+        timer.tolerance = 0.003
         wagTimer = timer
         RunLoop.main.add(timer, forMode: .common)
     }
     private func refreshTail() {
         let elapsed = ProcessInfo.processInfo.systemUptime - startedAt
-        let phase = elapsed.truncatingRemainder(dividingBy: wagInterval)
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let pose = wagPose(elapsed: elapsed, reduced: reduced)
         if pose != currentPose { showTail(pose: pose) }
-        let active = !reduced && elapsed >= wagInterval && phase < wagDuration
-        scheduleTail(after: active ? frameInterval : max(0.001, wagInterval - phase))
+
     }
     private func showTail(pose: Int) {
         if frames[pose] == nil {
@@ -210,7 +213,11 @@ final class MenuAgent: NSObject, NSApplicationDelegate {
         }
         currentPose = pose; item.button?.image = frames[pose]
     }
-    func applicationWillTerminate(_ notification: Notification) { wagTimer?.invalidate(); pathMonitor.cancel() }
+    func applicationWillTerminate(_ notification: Notification) {
+        wagTimer?.invalidate()
+        if let observer = motionObserver { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
+        pathMonitor.cancel()
+    }
     @objc func runCheck(_ sender: NSMenuItem) {
         guard let provider = sender.representedObject as? String else { return }
         sender.isEnabled = false
