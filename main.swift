@@ -22,11 +22,18 @@ func labProbe(_ rawURL: String, expected: String) -> String? {
     } catch { return "unknown" }
 }
 
+private let wagInterval: TimeInterval = 24
+private let wagDuration: TimeInterval = 1.2
+private let frameInterval: TimeInterval = 1.0 / 30
+private let maximumWagAngle = 16
+
 func wagPose(elapsed: TimeInterval, reduced: Bool) -> Int {
-    guard !reduced, elapsed.isFinite, elapsed >= 24 else { return 0 }
-    let phase = elapsed.truncatingRemainder(dividingBy: 24)
-    guard phase < 0.9 else { return 0 }
-    return Int(phase * 8) % 2 == 0 ? 1 : -1
+    guard !reduced, elapsed.isFinite, elapsed >= wagInterval else { return 0 }
+    let progress = elapsed.truncatingRemainder(dividingBy: wagInterval) / wagDuration
+    guard progress < 1 else { return 0 }
+    let envelope = sin(.pi * progress)
+    let angle = Double(maximumWagAngle) * envelope * envelope * sin(5 * .pi * progress)
+    return Int(angle.rounded())
 }
 
 func hachiIcon(size: CGFloat, badge: Bool, pose: Int = 0) -> NSImage {
@@ -50,9 +57,15 @@ func hachiIcon(size: CGFloat, badge: Bool, pose: Int = 0) -> NSImage {
             NSBezierPath(roundedRect: bounds.insetBy(dx: s, dy: s), xRadius: 7*s, yRadius: 7*s).fill()
         }
         let silhouette = badge ? fur : .black
-        let shift = CGFloat(pose)*2.8
+        // Keep the root and the shape of the tail fixed; rotate the whole curve about the root.
+        let angle = CGFloat(pose) * .pi / 180
+        let pivot = p(21, 25)
+        func tailPoint(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
+            let dx = (x - 21) * s, dy = (y - 25) * s
+            return NSPoint(x: pivot.x + dx*cos(angle) - dy*sin(angle), y: pivot.y + dx*sin(angle) + dy*cos(angle))
+        }
         let tail = NSBezierPath(); tail.lineWidth = 3.3*s; tail.lineCapStyle = .round
-        tail.move(to: p(21, 25)); tail.curve(to: p(28, 18+shift), controlPoint1: p(27, 27), controlPoint2: p(31, 22+shift))
+        tail.move(to: pivot); tail.curve(to: tailPoint(28, 18), controlPoint1: tailPoint(27, 27), controlPoint2: tailPoint(31, 22))
         silhouette.setStroke(); tail.stroke()
         oval(r(9, 14, 14, 14), silhouette)
         oval(r(8, 24, 8, 4.5), silhouette); oval(r(16, 24, 8, 4.5), silhouette)
@@ -65,10 +78,20 @@ func hachiIcon(size: CGFloat, badge: Bool, pose: Int = 0) -> NSImage {
         if badge { oval(r(10, 12.6, 12, 6.5), cream); oval(r(12, 20.5, 8, 5.5), cream) }
         let eyes = { oval(r(10.8, 10.5, 1.9, 2.3), dark); oval(r(19.3, 10.5, 1.9, 2.3), dark) }
         let mouth = { oval(r(13.4, 15, 5.2, 3.5), dark) }
-        if badge { eyes(); mouth(); oval(r(14.4, 13, 3.2, 1.75), dark) } else { cut(eyes); cut(mouth) }
-        let tongue = r(14.6, 17.2, 2.8, 3.5)
+        if badge {
+            eyes(); mouth(); oval(r(14.4, 13, 3.2, 1.75), dark)
+        } else {
+            // Negative space around the tongue has to survive at the actual menu-bar size.
+            cut {
+                eyes()
+                NSBezierPath(roundedRect: r(11, 14.7, 10, 4.6), xRadius: 2.3*s, yRadius: 2.3*s).fill()
+                NSBezierPath(roundedRect: r(11.5, 17.0, 9, 8), xRadius: 3.6*s, yRadius: 3.6*s).fill()
+            }
+        }
+        let tongue = badge ? r(14.6, 17.2, 2.8, 3.5) : r(13.8, 16.1, 4.4, 7.2)
         (badge ? NSColor(srgbRed: 0.98, green: 0.41, blue: 0.48, alpha: 1) : .black).setFill()
-        NSBezierPath(roundedRect: tongue, xRadius: 1.35*s, yRadius: 1.35*s).fill()
+        let radius = (badge ? 1.35 : 2.2) * s
+        NSBezierPath(roundedRect: tongue, xRadius: radius, yRadius: radius).fill()
         return true
     }
 }
@@ -127,13 +150,10 @@ final class MenuAgent: NSObject, NSApplicationDelegate {
     var frames: [Int: NSImage] = [:]
     var currentPose = 0
     func applicationDidFinishLaunching(_ note: Notification) {
-        for pose in [-1, 0, 1] {
-            let icon = hachiIcon(size: 19, badge: false, pose: pose); icon.isTemplate = true; frames[pose] = icon
-        }
-        item.button?.image = frames[0]
+        showTail(pose: 0)
         item.button?.toolTip = "Hachi · 观察模式（不拦截）"
         item.button?.setAccessibilityLabel("Hachi 小八")
-        scheduleTail(after: max(0.02, 24 - (ProcessInfo.processInfo.systemUptime - startedAt)))
+        scheduleTail(after: max(0.001, wagInterval - (ProcessInfo.processInfo.systemUptime - startedAt)))
         let menu = NSMenu()
         let scope = NSMenuItem(title: "观察模式 · 不拦截运行中流量", action: nil, keyEquivalent: "")
         let uncovered = NSMenuItem(title: "浏览器授权 / MCP：未覆盖", action: nil, keyEquivalent: "")
@@ -159,12 +179,19 @@ final class MenuAgent: NSObject, NSApplicationDelegate {
     }
     private func refreshTail() {
         let elapsed = ProcessInfo.processInfo.systemUptime - startedAt
-        let phase = elapsed.truncatingRemainder(dividingBy: 24)
+        let phase = elapsed.truncatingRemainder(dividingBy: wagInterval)
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let pose = wagPose(elapsed: elapsed, reduced: reduced)
-        if pose != currentPose { currentPose = pose; item.button?.image = frames[pose] }
-        let next = pose == 0 ? 24 - phase : min(0.9 - phase, (floor(phase * 8) + 1) / 8 - phase)
-        scheduleTail(after: max(0.02, next))
+        if pose != currentPose { showTail(pose: pose) }
+        let active = !reduced && elapsed >= wagInterval && phase < wagDuration
+        scheduleTail(after: active ? frameInterval : max(0.001, wagInterval - phase))
+    }
+    private func showTail(pose: Int) {
+        if frames[pose] == nil {
+            let icon = hachiIcon(size: 19, badge: false, pose: pose)
+            icon.isTemplate = true; frames[pose] = icon
+        }
+        currentPose = pose; item.button?.image = frames[pose]
     }
     func applicationWillTerminate(_ notification: Notification) { wagTimer?.invalidate(); pathMonitor.cancel() }
     @objc func runCheck(_ sender: NSMenuItem) {
@@ -197,9 +224,10 @@ if !args.isEmpty {
         let data = try JSONEncoder().encode(["pose": wagPose(elapsed: elapsed, reduced: reduced)])
         print(String(decoding: data, as: UTF8.self)); exit(0)
     }
-    if (args.count == 3 || args.count == 4), args[0] == "--draw-icon", let size = Int(args[1]), (16...1024).contains(size),
-       let pose = args.count == 4 ? Int(args[3]) : 0, (-1...1).contains(pose),
-       let tiff = hachiIcon(size: CGFloat(size), badge: true, pose: pose).tiffRepresentation,
+    if (args.count == 3 || args.count == 4), ["--draw-icon", "--draw-menu-icon"].contains(args[0]),
+       let size = Int(args[1]), (16...1024).contains(size),
+       let pose = args.count == 4 ? Int(args[3]) : 0, (-maximumWagAngle...maximumWagAngle).contains(pose),
+       let tiff = hachiIcon(size: CGFloat(size), badge: args[0] == "--draw-icon", pose: pose).tiffRepresentation,
        let bitmap = NSBitmapImageRep(data: tiff), let png = bitmap.representation(using: .png, properties: [:]) {
         try png.write(to: URL(fileURLWithPath: args[2])); exit(0)
     }
