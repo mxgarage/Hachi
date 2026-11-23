@@ -1,0 +1,45 @@
+name: Claude PR review
+# 只在 PR 上运行，只发评论，不改代码、不合并。
+# 需要维护者在仓库 Secrets 里添加 CLAUDE_CODE_OAUTH_TOKEN（或 ANTHROPIC_API_KEY）；
+# 没有密钥时这个工作流会跳过评审步骤，不会失败。
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HAS_CLAUDE_AUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' || secrets.ANTHROPIC_API_KEY != '' }}
+    steps:
+      - name: Skip notice
+        if: env.HAS_CLAUDE_AUTH != 'true'
+        run: echo "No CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY secret; skipping Claude review."
+      - uses: actions/checkout@v4
+        if: env.HAS_CLAUDE_AUTH == 'true'
+        with:
+          fetch-depth: 1
+      - uses: anthropics/claude-code-action@v1
+        if: env.HAS_CLAUDE_AUTH == 'true'
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review pull request #${{ github.event.pull_request.number }} in ${{ github.repository }}.
+            Follow AGENTS.md. Focus on correctness bugs in main.swift / build.py / tests,
+            claims in README or docs that the tests do not actually prove, and anything
+            outside the project scope (Hachi only reports the current egress location; it must
+            not help bypass regional restrictions or platform enforcement).
+            Post one summary comment in Chinese, with inline comments for specific lines.
+            Do not push commits, approve, or merge.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
