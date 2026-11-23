@@ -5,7 +5,7 @@
 - 仓库里不放私有 IP/配置、账号令牌、设备路径或真实测试凭据。
 
 ## 改动流程
-1. 所有改动都走 PR，不直接推 main。分支名：`<执行者>/<简短主题>`，例如 `claude/pr-workflow`。
+1. 所有改动都走 PR，不直接推 main，维护者本人也一样。仓库是免费组织下的私有仓库，GitHub 不会强制分支保护，这条只靠约定，所以每个人和每个代理都要自觉遵守。分支名：`<执行者>/<简短主题>`，例如 `claude/pr-workflow`。
 2. PR 正文按 `.github/pull_request_template.md` 填写，写明执行者、对应 issue、怎么验证。
 3. 合并前必须满足：
    - `Account-free macOS verification`（`verify.yml`）在当前 head 上通过；
