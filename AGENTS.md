@@ -15,8 +15,8 @@
 5. 同一个 issue 同一时间只有一个代理在实现；接手前在 issue 里说明。
 
 ## 自动化边界
-- 自动触发的只有：CI（`verify.yml`）和 PR 评审（`claude-review.yml`，只评论，不改代码）。
-- `docs/roundtable.md` 的圆桌规则继续有效：圆桌各轮手动启动，不由评论自动触发，不自动改代码、合并或发布。
+- 可以自动运行的：CI（`verify.yml`）、PR 评审（`claude-review.yml` 和 Codex，只评论）、代理按 issue 自动实现并开 PR、圆桌各轮由定时任务或评论触发。
+- 不自动做的：合并、发布、改仓库设置和密钥。这些由维护者决定。
 - 不用真实 Claude/Codex/其他平台账号做故障实验。
 
 ## 本地验证
