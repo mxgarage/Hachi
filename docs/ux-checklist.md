@@ -3,8 +3,12 @@
 The maintainer walks through every item on a real Mac, on the commit being released, and records the result in
 `evidence/G6-ux-signoff.json` (see `evidence/README.md`). CI renders every menu-bar, menu and alert state in light
 and dark appearance (`tests/ux_screens.py`, artifact `hachi-<sha>` → `acceptance/ux/index.html`); use those
-screenshots to compare against what you see. CI draws the menu from the real menu items, so it cannot show how the
-system menu bar itself looks or behaves. That part is only covered by this walkthrough.
+screenshots to compare against what you see. CI also compares every screenshot pixel for pixel with the stored
+baseline in `tests/ux-baseline/` (`tests/ux_baseline.py`) and fails on any difference, with diff images in
+`acceptance/ux-diff/index.html`. That only proves nothing changed by accident since the baseline was accepted; it
+does not prove the screens are right, and it does not replace this walkthrough or the maintainer's sign-off. CI
+draws the menu from the real menu items, so it cannot show how the system menu bar itself looks or behaves. That
+part is only covered by this walkthrough.
 
 Each item has an ID; the evidence needs a `pass` for every ID below. If an item fails, open an issue for it (it can
 be labelled `claude`) and sign off again once it is fixed. Changing this file after `tested_commit` makes the

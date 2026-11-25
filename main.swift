@@ -301,7 +301,16 @@ func renderUI(into dir: URL) throws {
         let alert = makeAlert(result); alert.layout()
         return (name, alert.window.contentView!, [alert.messageText, alert.informativeText])
     }
-    let example = "示例输出（截图用，不是真实预检结果）"
+    // Same shape as a real claude-safe / codex-safe --check-only output, so the screenshots show how a long,
+    // multi-line result wraps. Documentation addresses only (RFC 5737); labelled as an example in the alert itself.
+    func example(_ host: String, passed: Bool) -> String {
+        let ip = passed ? "203.0.113.10" : "198.51.100.7"
+        let verdict = passed
+            ? "PASS = these sampled requests matched expected IP and route only; not proof of kill switch, future requests, app coverage, or account safety."
+            : "BLOCKED = the sampled exit IP did not match expected; the client was not started."
+        return "示例输出（截图用，不是真实预检结果）\n\(host): \(passed ? "PASS" : "BLOCKED"); IP=\(ip); expected=203.0.113.10; "
+            + "trace=200 TLS=0; observed_route=\(passed ? "example-chain" : "unexpected")\n\(verdict)\nCHECK-ONLY: 未启动客户端"
+    }
     let builders: [() -> (String, NSView, [String])] = [
         { ("menubar-rest", MenuBarPicture(pose: 0, tooltip: idleTooltip), [idleTooltip]) },
         { ("menubar-wag", MenuBarPicture(pose: maximumWagAngle, tooltip: idleTooltip), [idleTooltip]) },
@@ -312,10 +321,10 @@ func renderUI(into dir: URL) throws {
         { menuState("menu-checking-claude") { m in
             m.item(withTag: pathTag)?.title = networkTitle(satisfied: true)
             if let row = m.items.first(where: { $0.representedObject as? String == "claude" }) { _ = setChecking(row, true) } } },
-        { alertState("alert-claude-passed", Result(provider: "claude", status: "passed", evidence: example)) },
-        { alertState("alert-claude-blocked", Result(provider: "claude", status: "blocked", evidence: example)) },
-        { alertState("alert-codex-passed", Result(provider: "codex", status: "passed", evidence: example)) },
-        { alertState("alert-codex-blocked", Result(provider: "codex", status: "blocked", evidence: example)) },
+        { alertState("alert-claude-passed", Result(provider: "claude", status: "passed", evidence: example("claude.ai", passed: true))) },
+        { alertState("alert-claude-blocked", Result(provider: "claude", status: "blocked", evidence: example("claude.ai", passed: false))) },
+        { alertState("alert-codex-passed", Result(provider: "codex", status: "passed", evidence: example("chatgpt.com", passed: true))) },
+        { alertState("alert-codex-blocked", Result(provider: "codex", status: "blocked", evidence: example("chatgpt.com", passed: false))) },
         // the real failure path: run an entry that does not exist, as check() does when claude-safe is missing
         { alertState("alert-entry-missing", runEntry(dir.appendingPathComponent("missing/claude-safe"), provider: "claude")) },
     ]
