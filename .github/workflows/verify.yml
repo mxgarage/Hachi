@@ -5,9 +5,24 @@ permissions:
 jobs:
   loopback:
     runs-on: macos-15
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - run: python3 build.py
-      - run: python3 tests/lab.py
-      - run: python3 tests/branding.py
+      # Builds, runs tests/lab.py and tests/branding.py, checks repo hygiene,
+      # and evaluates the release gate (reported in the job summary; not met is expected for now).
+      - run: python3 tests/acceptance.py
+      - name: Package app
+        if: always()
+        run: |
+          if [ -d build/Hachi.app ]; then
+            ditto -c -k --keepParent build/Hachi.app build/Hachi-${GITHUB_SHA::7}-unsigned.zip
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hachi-${{ github.sha }}
+          path: |
+            build/Hachi-*-unsigned.zip
+            build/acceptance/
+          if-no-files-found: warn
+          retention-days: 14

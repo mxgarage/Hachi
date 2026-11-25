@@ -14,12 +14,16 @@ Requirements: macOS, Apple command-line tools, and Python 3.9+.
 python3 build.py
 python3 tests/lab.py
 python3 tests/branding.py
+python3 tests/acceptance.py   # all of the above + gate report in build/acceptance/
 open 'build/Hachi.app'
 ```
 
 The test harness starts a real HTTP observer on loopback. It never runs an official provider client, reads a provider credential or sends traffic off-device. `tests/check.py` is an optional manual preflight smoke test for machines with the two local adapters, not part of acceptance or CI. Neither test represents a provider risk or ban outcome.
 
 ## Release gate (not met)
+
+The gate is also kept in machine-readable form in [`release-gate.json`](release-gate.json). `tests/acceptance.py` evaluates each item from evidence files under [`evidence/`](evidence/README.md) on every CI run and reports it in the job summary; missing evidence counts as not met. The `Acceptance backlog` workflow keeps one `acceptance` issue open per unmet item. A stable tag (`v0.2`) only releases when every item is met; a suffixed tag (`v0.2-dev.1`) publishes a prerelease marked as not meeting the gate.
+
 
 - Require at least 95% successful end-to-end operations in each declared workflow (desktop, CLI, browser authorization, MCP where supported), on a preregistered held-out scenario matrix spanning supported OS/architectures. Record counts, environments, repeated seeds, timing and uncertainty. Do not pool easy scenarios to hide a failing workflow.
 - Critical failures block release independent of the percentage: zero observed direct or wrong-route egress for protected flows in the failure matrix, and no interruption or route change for unrelated control workloads. Verify at an independent network observer; app logs alone do not count. Missing coverage is not a pass.
@@ -29,4 +33,4 @@ The test harness starts a real HTTP observer on loopback. It never runs an offic
 
 Scope: compliant network reliability only, not altering provider account eligibility or bypassing platform enforcement. No private IP/config, account tokens, device paths, or live test credentials belong in the repo.
 
-Contributing: all changes go through pull requests, including the maintainer's own; merges are manual. See [AGENTS.md](AGENTS.md) for the merge gate and what runs automatically (CI, Codex and Claude PR review, and Claude implementation for issues labeled `claude`).
+Contributing: all changes go through pull requests, including the maintainer's own; merges are manual. See [AGENTS.md](AGENTS.md) for the merge gate and what runs automatically (CI and acceptance, Codex and Claude PR review, and Claude implementation for issues labeled `claude` or comments starting with `@claude`).

@@ -1,0 +1,27 @@
+name: Acceptance backlog
+# 自迭代闭环：每周（以及门槛清单或证据变化时）评估发布门槛，
+# 给每个未满足项保持一条 `acceptance` issue，满足后自动关闭。
+# 它不打 `claude` 标签：要不要让 Claude 开始实现，由维护者在 issue 上打标签决定。
+on:
+  schedule:
+    - cron: '17 1 * * 1'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['release-gate.json', 'evidence/**', 'tests/acceptance.py', '.github/scripts/sync_acceptance_issues.py']
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: acceptance-backlog
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/acceptance.py --gate-only
+      - run: python3 .github/scripts/sync_acceptance_issues.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

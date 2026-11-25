@@ -16,13 +16,20 @@
 
 ## 自动化边界
 - 可以自动运行的：CI（`verify.yml`）、PR 评审（`claude-review.yml` 和 Codex，只评论）、代理按 issue 自动实现并开 PR（`claude.yml`：仓库成员/协作者（人类账号）给 issue 打 `claude` 标签，或发一条以 `@claude` 开头的评论；正文中间或引用里提到 @claude、bot 评论不触发，带 Claude Code 落款的代理代发评论按约定也不触发）、圆桌各轮由定时任务或评论触发。
-- 不自动做的：合并、发布、改仓库设置和密钥。这些由维护者决定。
+- 自动验收：`verify.yml` 每次运行 `tests/acceptance.py`（构建、测试、仓库卫生检查，并按 `release-gate.json` 评估发布门槛），报告写进 job summary，app 和报告作为产物上传。
+- 自迭代：`acceptance-backlog.yml` 每周和门槛/证据变化时运行，给每个未满足的门槛项保持一条 `acceptance` issue，满足后自动关闭。它不打 `claude` 标签；维护者看过后自己打标签，才会让 Claude 开始实现。
+- 发布：`release.yml` 只在维护者推 `v*` tag 时运行。无后缀 tag（`v0.2`）要求门槛全部满足，否则不发布；带后缀 tag（`v0.2-dev.1`）发预发布并标明未通过门槛。
+- 不自动做的：合并、打 tag 和发布、改仓库设置和密钥。这些由维护者决定。
 - 不用真实 Claude/Codex/其他平台账号做故障实验。
+
+## 验收证据
+- `evidence/` 下的证据只能来自真实的实验运行和独立观察器，由维护者提交。代理可以写产生证据的工具和测试，但不得手写、编辑或"补齐" `evidence/` 下的文件，也不得为了让门槛通过而放宽 `release-gate.json` 或 `tests/acceptance.py` 的条件；要改条件，先在 issue 里提出，由维护者决定。
 
 ## 本地验证
 ```
 python3 build.py
 python3 tests/lab.py
 python3 tests/branding.py
+python3 tests/acceptance.py   # 包含以上三步，另做卫生检查和门槛评估
 ```
 `tests/check.py` 是可选的手动冒烟测试，不属于验收或 CI。
