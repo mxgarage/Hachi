@@ -141,12 +141,14 @@ def common(item, ev):
     allowed = tuple(item.get('allowed_credentials', DEFAULT_CREDENTIALS))
     if ev.get('credentials') not in allowed:
         errs.append(f'credentials 必须是 {" / ".join(allowed)}（不能用真实平台账号）')
-    # raw records are pinned by hash: {path: evidence/..., sha256} (hash checked) or {url: https://..., sha256}
+    # raw records are pinned by hash: {path: evidence/..., sha256} (hash checked here) or {url: https://..., sha256}
+    # (for large captures; CI does not download it, so the hash is only the maintainer's record)
     raw = ev.get('raw_results')
     if not isinstance(raw, dict) or not SHA256.match(str(raw.get('sha256', ''))):
         errs.append('raw_results 必须是 {path 或 url, sha256}（64 位小写十六进制）')
     elif 'path' in raw:
         if (not repo_file(raw['path'], ('evidence/',)) or raw['path'] == 'evidence/README.md'
+                or raw['path'] in {i['evidence'] for i in MANIFEST['items']}
                 or not raw['path'].endswith(RAW_SUFFIXES)):
             errs.append(f'raw_results.path 必须是 evidence/ 下的原始记录文件（{"/".join(RAW_SUFFIXES)}，不能是 README）')
         elif hashlib.sha256((ROOT / raw['path']).read_bytes()).hexdigest() != raw['sha256']:

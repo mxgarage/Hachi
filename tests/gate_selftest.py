@@ -86,6 +86,7 @@ bad = [
     ('G4', lambda e: e['raw_results'].update(path='evidence/README.md')),  # README is not a raw record
     ('G4', lambda e: e.update(raw_results='evidence/README.md')),  # bare path without hash
     ('G4', lambda e: e.update(raw_results=dict(url='https://example.invalid/log', sha256='x'))),
+    ('G4', lambda e: e.update(raw_results=dict(path=items['G4']['evidence'], sha256='0' * 64))),  # evidence file as its own raw record
     ('G4', lambda e: e['raw_results'].update(sha256='0' * 64)),  # hash does not match file
     ('G4', lambda e: e.update(credentials='authorized_test')),  # no authorized-credential path
     ('G1', lambda e: e.update(matrix_preregistered='tests/not-yet-written.md')),
@@ -130,6 +131,10 @@ ev = copy.deepcopy(good['G1'])
 ev['workflows']['mcp'] = dict(supported=False, reason='no MCP client in this release')
 assert not problems('G1', ev), problems('G1', ev)
 
+# Slices are judged on the point estimate with min_slice_attempts runs (documented choice): 19/20 passes.
+ev = copy.deepcopy(good['G1'])
+ev['workflows']['cli']['by_scenario'] = dict(main=dict(attempts=380, successes=377), small=dict(attempts=20, successes=19))
+assert not problems('G1', ev), problems('G1', ev)
 for item_id, ev in good.items():
     assert not problems(item_id, ev), (item_id, problems(item_id, ev))
 for item_id, weaken in bad:
