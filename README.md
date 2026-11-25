@@ -28,3 +28,5 @@ The test harness starts a real HTTP observer on loopback. It never runs an offic
 - Key blocker: signed Network Extension feasibility and independent test of behavior when extensions are unavailable. No launch-time status or synthetic canary substitutes for a data-plane test.
 
 Scope: compliant network reliability only, not altering provider account eligibility or bypassing platform enforcement. No private IP/config, account tokens, device paths, or live test credentials belong in the repo.
+
+Contributing: all changes go through pull requests, including the maintainer's own; merges are manual. See [AGENTS.md](AGENTS.md) for the merge gate and what runs automatically (CI, Codex and Claude PR review, and Claude implementation for issues labeled `claude`).
