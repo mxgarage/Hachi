@@ -104,17 +104,12 @@ for k, n in ((380, 400), (99, 100)):  # make sure these really exercise the lowe
     assert n >= items['G1']['min_attempts'] and k / n >= items['G1']['min_rate'] > A.wilson_lower(k, n)
 assert A.wilson_lower(73, 73) >= items['G1']['min_rate'] > A.wilson_lower(72, 72), 'min_attempts must be the smallest passing all-success count'
 # Hygiene: compressed IPv6 and MAC addresses are caught; documentation/loopback ranges and non-addresses are not.
-def _valid6(t):
-    try:
-        A.ipaddress.IPv6Address(t); return True
-    except ValueError:
-        return False
 def ip_hits(line):
-    return ([t for t in (m.group(0) for m in A.IPV6.finditer(line)) if _valid6(t) and not A.allowed_ip(t)]
+    return ([t for t in (m.group(0) for m in A.IPV6.finditer(line)) if A.looks_ipv6(t) and not A.allowed_ip(t)]
             + [m.group(0) for m in A.MAC.finditer(line)])
 # Real-looking addresses are assembled at run time so this file itself passes the hygiene scan.
 assert ip_hits('peer ' + '2600' + '::1') and ip_hits('ll ' + 'fe80' + '::1') and ip_hits('mac ' + ':'.join(['de', 'ad', 'be', 'ef', '00', '11']))
-assert not ip_hits('loop ::1 doc 2001:db8::1 std::map at 08:14:36')
+assert not ip_hits('loop ::1 doc 2001:db8::1 std::map at 08:14:36 slices x[::2] b[1::2] c[10::3]')
 assert A.allowed_ip('198.51.100.7') and not A.allowed_ip('.'.join(['8'] * 4)) and not A.allowed_ip(':' + ':1a2b:3c4d')
 
 # --release-commit path (used by release.yml): HEAD as release commit passes (the failing direction is in the

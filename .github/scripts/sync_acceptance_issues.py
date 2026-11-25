@@ -57,7 +57,8 @@ def body_for(g):
                     '维护者确认后请手动关闭这条 issue。')
     if g.get('agent_ok') is True:  # allow-list: an item without agent_ok is not handed to agents
         start = ('维护者看过后给这条 issue 打 `claude` 标签，Claude 会在新分支上实现上面的下一步并开 PR'
-                 '（只能由人打标签，工作流不会自动打）。范围：Hachi 只提醒用户当前的出口位置，不帮人绕开地区限制或平台执行。')
+                 '（只能由人打标签，工作流不会自动打）。范围：Hachi 只提醒用户当前的出口位置，不帮人绕开地区限制或平台执行；'
+                 '实现和实验只用本地合成夹具、隔离网络和合成账号，不针对任何真实平台的地区或账号检测。')
     else:
         start = ('**暂不交给代理。** 这一项涉及流量的强制路由或数据面，是否在 Hachi 的范围内（只提醒当前出口位置、'
                  '不帮人绕开地区限制或平台执行）需要维护者先确认。确认前请不要给这条 issue 打 `claude` 标签；'

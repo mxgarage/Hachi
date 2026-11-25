@@ -51,6 +51,15 @@ ALLOWED_NETS = [ipaddress.ip_network(n) for n in
                 ('127.0.0.0/8', '0.0.0.0/32', '192.0.2.0/24', '198.51.100.0/24', '203.0.113.0/24',
                  '::1/128', '2001:db8::/32')]
 IPV6 = re.compile(r'(?<![0-9A-Za-z:])[0-9a-fA-F]{0,4}(?::[0-9a-fA-F]{0,4}){2,7}(?![0-9A-Za-z:])')
+
+def looks_ipv6(t):
+    """A real IPv6 address: parses, and has at least one group of 3+ hex digits, so code such as std::map,
+    08:14:36 or slices like x[::2] / b[1::2] are not flagged."""
+    try:
+        ipaddress.IPv6Address(t)
+    except ValueError:
+        return False
+    return any(len(g) >= 3 for g in t.split(':'))
 MAC = re.compile(r'(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f:])')
 # hygiene-patterns-end
 
@@ -87,11 +96,7 @@ def hygiene():
                     problems.append(f'{path.relative_to(ROOT)}:{n} IP address {ip} (use 192.0.2.x/198.51.100.x/203.0.113.x)')
             for m in IPV6.finditer(line):
                 ip = m.group(0).lower()
-                try:
-                    ipaddress.IPv6Address(ip)  # only real addresses: std::map, 08:14:36 etc. do not parse
-                except ValueError:
-                    continue
-                if not allowed_ip(ip):
+                if looks_ipv6(ip) and not allowed_ip(ip):
                     problems.append(f'{path.relative_to(ROOT)}:{n} IPv6 address {ip} (use 2001:db8::/32)')
             for m in MAC.finditer(line):
                 problems.append(f'{path.relative_to(ROOT)}:{n} MAC address {m.group(0)}')
