@@ -12,7 +12,13 @@ import acceptance as A
 A.unsupported_workflows = lambda: set()  # never depend on real evidence on disk; tested explicitly below
 items = {i['id']: i for i in json.loads((A.ROOT / 'release-gate.json').read_text(encoding='utf-8'))['items']}
 head = A.git('rev-parse', 'HEAD').stdout.strip()
-base = dict(tested_commit=head, environments=['macOS 15 arm64'], credentials='synthetic', raw_results=dict(path='evidence/README.md', sha256=hashlib.sha256((A.ROOT / 'evidence/README.md').read_bytes()).hexdigest()))
+# Temporary fixtures inside the repo (removed at exit): a raw record and a gaps document.
+import atexit
+RAW, GAPS = 'evidence/.selftest-raw.json', 'docs/.selftest-gaps.md'
+(A.ROOT / RAW).write_text('{"runs": []}\n', encoding='utf-8')
+(A.ROOT / GAPS).write_text('# Transfer\n\n## Gaps\n- none observed\n', encoding='utf-8')
+atexit.register(lambda: [(A.ROOT / p).unlink(missing_ok=True) for p in (RAW, GAPS)])
+base = dict(tested_commit=head, environments=['macOS 15 arm64'], credentials='synthetic', raw_results=dict(path=RAW, sha256=hashlib.sha256((A.ROOT / RAW).read_bytes()).hexdigest()))
 good = {
     'G1': dict(base, matrix_preregistered='tests/lab.py', workflows={
         w: dict(attempts=400, successes=396, seeds=[1, 2, 3], timing=dict(median_s=4.2, p95_s=9.8)) for w in items['G1']['workflows']}),
@@ -21,7 +27,7 @@ good = {
                 control_route_changes=0) for c in items['G3']['cases'] if c.startswith('inject_')}),
     'G3': dict(base, cases={c: dict(result='pass') for c in items['G3']['cases']}),
     'G4': dict(base, fixture_clients=['fixture'], signed_clients=['client'], same_enforcement_mechanism=True,
-               gaps_document='docs/roundtable.md'),
+               gaps_document=GAPS),
     'G5': dict(base, signed_extension_loaded=True, data_plane_tested=True, unavailable_behavior_tested=True),
 }
 bad = [
@@ -58,6 +64,8 @@ bad = [
     ('G3', lambda e: e['cases']['mcp_remote_streaming'].update(result='not_supported')),  # G1 does not mark mcp unsupported
     ('G4', lambda e: e.update(gaps_document='docs/missing.md')),
     ('G4', lambda e: e.update(gaps_document='README.md')),
+    ('G4', lambda e: e.update(gaps_document='docs/roundtable.md')),  # no "## Gaps" section
+    ('G4', lambda e: e['raw_results'].update(path='evidence/README.md')),  # README is not a raw record
     ('G4', lambda e: e.update(raw_results='evidence/README.md')),  # bare path without hash
     ('G4', lambda e: e.update(raw_results=dict(url='https://example.invalid/log', sha256='x'))),
     ('G4', lambda e: e['raw_results'].update(sha256='0' * 64)),  # hash does not match file
@@ -75,6 +83,12 @@ def problems(item_id, ev):
 for k, n in ((380, 400), (99, 100)):  # make sure these really exercise the lower bound, not min_attempts
     assert n >= items['G1']['min_attempts'] and k / n >= items['G1']['min_rate'] > A.wilson_lower(k, n)
 assert A.wilson_lower(73, 73) >= items['G1']['min_rate'] > A.wilson_lower(72, 72), 'min_attempts must be the smallest passing all-success count'
+# --release-commit path (used by release.yml): HEAD as release commit passes; an older release commit,
+# of which tested_commit=HEAD is not an ancestor, is rejected.
+assert not A.provenance(good['G5'], head)
+older = A.git('rev-parse', 'HEAD~1').stdout.strip()
+if older:
+    assert any('祖先' in p for p in A.provenance(good['G5'], older)), 'evidence newer than release commit passed'
 # G3 mcp cases may be not_supported only when G1 marks mcp unsupported
 ev = copy.deepcopy(good['G3'])
 ev['cases']['mcp_remote_streaming']['result'] = 'not_supported'

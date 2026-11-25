@@ -106,6 +106,7 @@ def repo_file(rel, prefixes):
     return (path.is_relative_to(ROOT) and '..' not in Path(rel).parts and not (ROOT / rel).is_symlink()
             and path.is_file())
 
+RAW_SUFFIXES = ('.json', '.jsonl', '.log', '.csv', '.pcap', '.pcapng')
 DEFAULT_CREDENTIALS = ('none', 'synthetic')  # no authorized/live credentials path (AGENTS.md); adding one is a maintainer decision
 
 def common(item, ev):
@@ -122,8 +123,9 @@ def common(item, ev):
     if not isinstance(raw, dict) or not SHA256.match(str(raw.get('sha256', ''))):
         errs.append('raw_results 必须是 {path 或 url, sha256}（64 位小写十六进制）')
     elif 'path' in raw:
-        if not repo_file(raw['path'], ('evidence/',)):
-            errs.append('raw_results.path 必须是 evidence/ 下存在的原始记录文件')
+        if (not repo_file(raw['path'], ('evidence/',)) or raw['path'] == 'evidence/README.md'
+                or not raw['path'].endswith(RAW_SUFFIXES)):
+            errs.append(f'raw_results.path 必须是 evidence/ 下的原始记录文件（{"/".join(RAW_SUFFIXES)}，不能是 README）')
         elif hashlib.sha256((ROOT / raw['path']).read_bytes()).hexdigest() != raw['sha256']:
             errs.append('raw_results.sha256 与文件内容不符')
     elif not str(raw.get('url', '')).startswith('https://'):
@@ -271,6 +273,8 @@ def eval_transfer(item, ev):
     gaps = ev.get('gaps_document', '')
     if not repo_file(gaps, ('docs/',)):
         errs.append('gaps_document 必须指向 docs/ 下存在的差距文档')
+    elif not re.search(r'^## (Gaps|差距)\b', (ROOT / gaps).read_text(encoding='utf-8'), re.M):
+        errs.append('gaps_document 里需要一个 "## Gaps" 或 "## 差距" 章节')
     return errs, []
 
 def eval_network_extension(item, ev):

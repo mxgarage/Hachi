@@ -4,3 +4,5 @@ __pycache__/
 .env
 .env.*
 *.xcuserstate
+evidence/.selftest-*
+docs/.selftest-*
