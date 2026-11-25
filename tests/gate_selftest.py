@@ -9,6 +9,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import acceptance as A
 
+A.unsupported_workflows = lambda: set()  # never depend on real evidence on disk; tested explicitly below
 items = {i['id']: i for i in json.loads((A.ROOT / 'release-gate.json').read_text(encoding='utf-8'))['items']}
 head = A.git('rev-parse', 'HEAD').stdout.strip()
 base = dict(tested_commit=head, environments=['macOS 15 arm64'], credentials='synthetic', raw_results=dict(path='evidence/README.md', sha256=hashlib.sha256((A.ROOT / 'evidence/README.md').read_bytes()).hexdigest()))
@@ -48,7 +49,7 @@ bad = [
     ('G3', lambda e: e['cases'].pop('dns_ipv6')),
     ('G3', lambda e: e['cases']['inject_sleep_wake'].update(result='fail')),
     ('G3', lambda e: e['cases']['dns_udp'].update(result='not_supported')),  # not an optional case
-    ('G3', lambda e: e['cases']['mcp_remote_streaming'].update(result='not_supported')),  # G1 evidence absent / mcp supported
+    ('G3', lambda e: e['cases']['mcp_remote_streaming'].update(result='not_supported')),  # G1 does not mark mcp unsupported
     ('G4', lambda e: e.update(gaps_document='docs/missing.md')),
     ('G4', lambda e: e.update(gaps_document='README.md')),
     ('G4', lambda e: e.update(raw_results='evidence/README.md')),  # bare path without hash
@@ -66,6 +67,14 @@ def problems(item_id, ev):
     return A.common(items[item_id], ev) + A.provenance(ev, None) + errs
 
 assert A.wilson_lower(73, 73) >= items['G1']['min_rate'] > A.wilson_lower(72, 72), 'min_attempts must be the smallest passing all-success count'
+# G3 mcp cases may be not_supported only when G1 marks mcp unsupported
+ev = copy.deepcopy(good['G3'])
+ev['cases']['mcp_remote_streaming']['result'] = 'not_supported'
+A.unsupported_workflows = lambda: {'mcp'}
+assert not problems('G3', ev), problems('G3', ev)
+ev['cases']['dns_udp']['result'] = 'not_supported'
+assert problems('G3', ev), 'non-optional case accepted as not_supported'
+A.unsupported_workflows = lambda: set()
 # mcp is "where supported": it may be marked unsupported with a reason
 ev = copy.deepcopy(good['G1'])
 ev['workflows']['mcp'] = dict(supported=False, reason='no MCP client in this release')
