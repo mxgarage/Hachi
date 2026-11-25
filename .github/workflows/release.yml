@@ -39,6 +39,8 @@ jobs:
           fi
           if [ "$tag" = "v$version" ]; then echo "prerelease=false" >> "$GITHUB_OUTPUT"; else echo "prerelease=true" >> "$GITHUB_OUTPUT"; fi
       - name: Acceptance (stable release requires the full gate)
+        env:
+          HACHI_REQUIRE_HISTORY: '1'
         run: |
           if [ "${{ steps.tag.outputs.prerelease }}" = "true" ]; then
             python3 tests/acceptance.py
@@ -69,6 +71,9 @@ jobs:
           retention-days: 7
   publish:
     needs: build
+    # 维护者可以在 Settings → Environments → release 里加 required reviewers，让发布需要审批；
+    # 免费组织的私有仓库可能用不了这个保护，那时"只由维护者推 tag"仍只是约定。
+    environment: release
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
