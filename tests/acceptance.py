@@ -105,10 +105,8 @@ def eval_workflow_success(item, ev):
             errs.append(f'{name}: 没有数据（缺覆盖不算通过）')
             continue
         if w.get('supported') is False:
-            if not w.get('reason'):
-                errs.append(f'{name}: 标为不支持但没写 reason')
-            else:
-                notes.append(f'{name}: 不支持（{w["reason"]}），发布说明里不得声称覆盖')
+            # 声明的工作流不能靠证据自行豁免；要缩小范围，由维护者改 release-gate.json 和 README。
+            errs.append(f'{name}: 证据标为不支持；声明的工作流必须有数据，缩小范围需维护者从 release-gate.json 和 README 中删除它')
             continue
         n, k = int(w.get('attempts', 0)), int(w.get('successes', 0))
         if not w.get('seeds'):
@@ -117,11 +115,10 @@ def eval_workflow_success(item, ev):
             errs.append(f'{name}: 次数 {n} < {item["min_attempts"]}')
             continue
         rate, low = k / n, wilson_lower(k, n)
-        notes.append(f'{name}: {k}/{n} = {rate:.1%}（95% 下界 {low:.1%}）')
-        if rate < item['min_rate']:
-            errs.append(f'{name}: 成功率 {rate:.1%} < {item["min_rate"]:.0%}')
-    if all(isinstance(flows.get(n), dict) and flows[n].get('supported') is False for n in item['workflows']):
-        errs.append('所有工作流都标为不支持')
+        notes.append(f'{name}: {k}/{n} = {rate:.1%}（Wilson 95% 下界 {low:.1%}）')
+        if low < item['min_rate']:
+            # 判定用置信下界而不是点估计：样本必须足以说明总体成功率 ≥ min_rate。
+            errs.append(f'{name}: 成功率 95% 置信下界 {low:.1%} < {item["min_rate"]:.0%}（点估计 {rate:.1%}，需要更多次数或更少失败）')
     return errs, notes
 
 def eval_critical_failures(item, ev):

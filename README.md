@@ -22,7 +22,7 @@ The test harness starts a real HTTP observer on loopback. It never runs an offic
 
 ## Release gate (not met)
 
-The gate is also kept in machine-readable form in [`release-gate.json`](release-gate.json). `tests/acceptance.py` evaluates each item from evidence files under [`evidence/`](evidence/README.md) on every CI run and reports it in the job summary; missing evidence counts as not met. The `Acceptance backlog` workflow keeps one `acceptance` issue open per unmet item. A stable tag (`v0.2`) only releases when every item is met; a suffixed tag (`v0.2-dev.1`) publishes a prerelease marked as not meeting the gate.
+The gate is also kept in machine-readable form in [`release-gate.json`](release-gate.json). `tests/acceptance.py` evaluates each item from evidence files under [`evidence/`](evidence/README.md) on every CI run and reports it in the job summary; missing evidence counts as not met, a declared workflow cannot be waived by its evidence (only by removing it from the gate), and the 95% success rate is judged on the Wilson 95% lower bound, not the point estimate. The `Acceptance backlog` workflow keeps one `acceptance` issue open per unmet item. A stable tag (`v0.2`) only releases when every item is met; a suffixed tag (`v0.2-dev.1`) publishes a prerelease marked as not meeting the gate.
 
 
 - Require at least 95% successful end-to-end operations in each declared workflow (desktop, CLI, browser authorization, MCP where supported), on a preregistered held-out scenario matrix spanning supported OS/architectures. Record counts, environments, repeated seeds, timing and uncertainty. Do not pool easy scenarios to hide a failing workflow.

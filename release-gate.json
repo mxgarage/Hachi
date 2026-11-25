@@ -9,8 +9,9 @@
       "evidence": "evidence/G1-workflow-success.json",
       "workflows": ["desktop", "cli", "browser_authorization", "mcp"],
       "min_rate": 0.95,
+      "min_rate_basis": "Wilson 95% lower bound, not the point estimate",
       "min_attempts": 60,
-      "next_step": "在 tests/ 下做一个可重复的端到端场景矩阵 runner（事先登记矩阵、固定种子、记录环境、耗时和置信区间），输出这份证据的 JSON 格式。只用合成账号和本地或隔离网络。"
+      "next_step": "在 tests/ 下做一个可重复的端到端场景矩阵 runner（事先登记矩阵、固定种子、记录环境、耗时和置信区间），输出这份证据的 JSON 格式。判定用成功率的 95% 置信下界，所以每个工作流需要足够多的次数（全部成功也至少约 75 次）。只用合成账号和本地或隔离网络。"
     },
     {
       "id": "G2",

@@ -11,7 +11,7 @@ items = {i['id']: i for i in json.loads((A.ROOT / 'release-gate.json').read_text
 base = dict(tested_commit='0' * 40, environments=['macOS 15 arm64'], credentials='synthetic', raw_results='ci-artifact')
 good = {
     'G1': dict(base, matrix_preregistered='docs/matrix.md', workflows={
-        w: dict(attempts=100, successes=97, seeds=[1, 2, 3]) for w in items['G1']['workflows']}),
+        w: dict(attempts=400, successes=396, seeds=[1, 2, 3]) for w in items['G1']['workflows']}),
     'G2': dict(base, observer=dict(independent=True, kind='gateway pcap'), protected_flows=50, control_workloads=10,
                direct_or_wrong_route_egress=0, control_interruptions=0, control_route_changes=0),
     'G3': dict(base, cases={c: dict(result='pass') for c in items['G3']['cases']}),
@@ -20,10 +20,14 @@ good = {
     'G5': dict(base, signed_extension_loaded=True, data_plane_tested=True, unavailable_behavior_tested=True),
 }
 bad = [
-    ('G1', lambda e: e['workflows']['mcp'].update(successes=94)),
+    ('G1', lambda e: e['workflows']['mcp'].update(successes=376)),
+    ('G1', lambda e: e['workflows']['mcp'].update(attempts=60, successes=57)),  # 95.0% point estimate, lower bound 86%
+    ('G1', lambda e: e['workflows']['cli'].update(attempts=60, successes=60)),  # 100% but lower bound 94%
     ('G1', lambda e: e['workflows'].pop('cli')),
     ('G1', lambda e: e['workflows']['desktop'].update(attempts=10, successes=10)),
     ('G1', lambda e: e['workflows'].__setitem__('mcp', dict(supported=False))),
+    ('G1', lambda e: [e['workflows'].__setitem__(w, dict(supported=False, reason='n/a'))
+                      for w in ('cli', 'browser_authorization', 'mcp')]),
     ('G1', lambda e: e.update(credentials='real_account')),
     ('G2', lambda e: e.update(direct_or_wrong_route_egress=1)),
     ('G2', lambda e: e['observer'].update(independent=False)),
