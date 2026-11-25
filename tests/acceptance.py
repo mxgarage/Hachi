@@ -46,7 +46,7 @@ SECRET_PATTERNS = [
     (re.compile(r'\bAKIA[0-9A-Z]{16}\b'), 'AWS key'),
     (re.compile(r'/Users/(?!Shared/)[A-Za-z0-9._-]+/|/home/(?!runner/)[A-Za-z0-9._-]+/|[A-Za-z]:\\Users\\[^\\\s]+'), 'device path'),
 ]
-IPV4 = re.compile(r'(?<![\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\d.])')
+IPV4 = re.compile(r'(?<!\d)(?<!\d\.)(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?!\d|\.\d)')  # a trailing full stop still matches
 ALLOWED_NETS = [ipaddress.ip_network(n) for n in
                 ('127.0.0.0/8', '0.0.0.0/32', '192.0.2.0/24', '198.51.100.0/24', '203.0.113.0/24',
                  '::1/128', '2001:db8::/32')]

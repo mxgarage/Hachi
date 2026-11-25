@@ -110,6 +110,10 @@ def ip_hits(line):
 # Real-looking addresses are assembled at run time so this file itself passes the hygiene scan.
 assert ip_hits('peer ' + '2600' + '::1') and ip_hits('ll ' + 'fe80' + '::1') and ip_hits('mac ' + ':'.join(['de', 'ad', 'be', 'ef', '00', '11']))
 assert not ip_hits('loop ::1 doc 2001:db8::1 std::map at 08:14:36 slices x[::2] b[1::2] c[10::3]')
+ip4 = lambda line: [m.group(0) for m in A.IPV4.finditer(line)]
+dot8 = '.'.join(['8'] * 4)
+assert ip4('egress ' + dot8 + '.') == [dot8] and ip4('egress ' + dot8 + ',') == [dot8], 'IPv4 at sentence end missed'
+assert not ip4('version 1.2.3.4.5 and 10.1.2.3.4'), 'five-part version string matched'
 assert A.allowed_ip('198.51.100.7') and not A.allowed_ip('.'.join(['8'] * 4)) and not A.allowed_ip(':' + ':1a2b:3c4d')
 
 # --release-commit path (used by release.yml): HEAD as release commit passes (the failing direction is in the
