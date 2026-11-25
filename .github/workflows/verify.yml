@@ -8,7 +8,28 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      # Builds, runs tests/lab.py and tests/branding.py, checks repo hygiene,
+        with:
+          fetch-depth: 0  # gate evidence is checked against git history
+      # evidence/ is maintainer-only (AGENTS.md). Agent branches or agent-authored commits that touch it fail.
+      # This catches honest mistakes; it cannot stop someone who rewrites branch names and trailers.
+      - name: Evidence is maintainer-only
+        if: github.event_name == 'pull_request'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- evidence/ ':(exclude)evidence/README.md')
+          [ -z "$changed" ] && exit 0
+          why=""
+          case "$HEAD_REF" in claude/*|codex/*|muse/*) why="agent branch $HEAD_REF";; esac
+          if git log --format=%B "$BASE_SHA..$HEAD_SHA" | grep -qiE '^(co-authored-by: .*(claude|codex|anthropic|openai)|claude-session:)'; then
+            why="$why agent-authored commits"
+          fi
+          if [ -n "$why" ]; then
+            echo "::error::evidence/ changed by $why. Only the maintainer commits evidence (AGENTS.md):"; echo "$changed"; exit 1
+          fi
+      # Builds, runs tests/lab.py and tests/branding.py, self-tests the gate, checks repo hygiene,
       # and evaluates the release gate (reported in the job summary; not met is expected for now).
       - run: python3 tests/acceptance.py
       - name: Package app

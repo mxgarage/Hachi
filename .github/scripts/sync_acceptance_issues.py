@@ -20,6 +20,7 @@ LABEL = 'acceptance'
 API = 'https://api.github.com'
 DRY = '--dry-run' in sys.argv
 REPO = os.environ.get('GITHUB_REPOSITORY', 'mxgarage/hachi')
+BOT = 'github-actions[bot]'
 
 def gh(method, path, body=None):
     if DRY and method != 'GET':
@@ -71,16 +72,22 @@ def main():
     if gh('GET', f'/repos/{REPO}/labels/{LABEL}') is None:
         gh('POST', f'/repos/{REPO}/labels', dict(name=LABEL, color='0e8a16', description='Release-gate item (auto-maintained)'))
     issues = []
-    for page in range(1, 6):
+    for page in range(1, 11):  # 1000 issues; far above the handful of gate items
         batch = gh('GET', f'/repos/{REPO}/issues?labels={LABEL}&state=all&per_page=100&page={page}') or []
         issues += [i for i in batch if 'pull_request' not in i]
         if len(batch) < 100:
             break
     for g in report['gate']:
-        existing = [i for i in issues if marker(g['id']) in (i.get('body') or '')]
+        # only issues this workflow created; a hand-written issue containing the marker is ignored
+        existing = [i for i in issues if marker(g['id']) in (i.get('body') or '')
+                    and i['user']['login'] == BOT]
         issue = next((i for i in existing if i['state'] == 'open'), existing[0] if existing else None)
         if issue and issue['state'] == 'closed' and issue.get('state_reason') == 'not_planned':
-            print(f'{g["id"]}: maintainer closed #{issue["number"]} as not planned; leaving it closed')
+            msg = f'{g["id"]}: 未满足，但维护者已把 #{issue["number"]} 以 not planned 关闭，不再提醒；要恢复提醒就重新打开它'
+            print(msg)
+            if os.environ.get('GITHUB_STEP_SUMMARY'):
+                with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as f:
+                    f.write(f'- ⚠️ {msg}\n')
             continue
         title = f'[发布门槛 {g["id"]}] {g["title"]}'
         if g['met']:

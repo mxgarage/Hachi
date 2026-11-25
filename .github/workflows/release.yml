@@ -1,26 +1,36 @@
 name: Release
 # 只由维护者推 tag 触发；代理不打 tag、不发布（AGENTS.md）。
-# tag 格式：v<CFBundleShortVersionString>，例如 v0.2。
+# tag 格式：v<CFBundleShortVersionString>，例如 v0.2；tag 指向的提交必须已经在 main 上（即走过 PR）。
 #   带后缀（v0.2-dev.1、v0.3-rc.1）→ 预发布，标明“未通过发布门槛”，发布门槛不满足也能发。
-#   不带后缀（v0.2）→ 正式发布，必须 `tests/acceptance.py --require-gate` 通过，否则失败、不发布。
+#   不带后缀（v0.2）→ 正式发布，必须 `tests/acceptance.py --require-gate --release-commit <tag 提交>` 通过：
+#   每份证据的 tested_commit 是 tag 提交的祖先，且之后产品代码没改过。否则失败、不发布。
 # 产物为 ad-hoc 签名（未经 Apple 公证）的 Hachi.app zip，附 SHA-256 和验收报告。
+# 构建 job 只读；只有最后的发布 job 有写权限，且不运行仓库里的代码。
 on:
   push:
     tags: ['v*']
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
-  release:
+  build:
     runs-on: macos-15
     timeout-minutes: 20
+    outputs:
+      prerelease: ${{ steps.tag.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
-      - name: Check tag matches app version
+        with:
+          fetch-depth: 0
+      - name: Tag is on main and matches app version
         id: tag
         run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::tag $GITHUB_REF_NAME points to a commit that is not on main; merge through a PR first"; exit 1
+          fi
           tag="${GITHUB_REF_NAME}"
           version=$(python3 -c "import re;print(re.search(r\"CFBundleShortVersionString='([^']+)'\", open('build.py').read()).group(1))")
           base="${tag#v}"; base="${base%%-*}"
@@ -33,19 +43,16 @@ jobs:
           if [ "${{ steps.tag.outputs.prerelease }}" = "true" ]; then
             python3 tests/acceptance.py
           else
-            python3 tests/acceptance.py --require-gate
+            python3 tests/acceptance.py --require-gate --release-commit "$GITHUB_SHA"
           fi
       - name: Sign (ad-hoc) and package
         run: |
           codesign --force --deep --sign - build/Hachi.app
           codesign --verify --deep --strict build/Hachi.app
-          zip="build/Hachi-${GITHUB_REF_NAME}-macos.zip"
+          mkdir -p dist
+          zip="dist/Hachi-${GITHUB_REF_NAME}-macos.zip"
           ditto -c -k --keepParent build/Hachi.app "$zip"
-          (cd build && shasum -a 256 "$(basename "$zip")" > "$(basename "$zip").sha256")
-      - name: Publish GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
+          (cd dist && shasum -a 256 "$(basename "$zip")" > "$(basename "$zip").sha256")
           {
             if [ "${{ steps.tag.outputs.prerelease }}" = "true" ]; then
               echo "> **开发预发布，未通过发布门槛。** 只用于试用和测试，不代表 README 中的发布条件已满足。"
@@ -54,9 +61,31 @@ jobs:
             echo "ad-hoc 签名，未经 Apple 公证：首次打开需在 Finder 里右键 → 打开。Hachi 只提醒当前的网络出口位置，不改变平台账号资格，也不帮人绕开地区限制。"
             echo
             cat build/acceptance/report.md
-          } > build/release-notes.md
+          } > dist/release-notes.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-dist
+          path: dist/
+          retention-days: 7
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-dist
+          path: dist
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: |
           flags=()
-          if [ "${{ steps.tag.outputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
           gh release create "$GITHUB_REF_NAME" --verify-tag --title "Hachi $GITHUB_REF_NAME" \
-            --notes-file build/release-notes.md "${flags[@]}" \
-            build/Hachi-*-macos.zip build/Hachi-*-macos.zip.sha256
+            --notes-file dist/release-notes.md "${flags[@]}" \
+            dist/Hachi-*-macos.zip dist/Hachi-*-macos.zip.sha256

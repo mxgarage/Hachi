@@ -4,6 +4,10 @@ Baseline (must pass on every PR): build, loopback lab, branding, gate self-test,
 README gate heading consistent with the evaluated gate.
 Release gate (release-gate.json): each item is evaluated from evidence/ files.
 Missing or malformed evidence is reported as not met, never as a pass.
+What this can check: format, thresholds, and consistency with git history (tested_commit is an
+ancestor, product code unchanged since, matrix committed before the test). What it cannot check:
+that a run really happened or the observer really was independent. Those are the maintainer's
+claims, made by committing the evidence.
 
   python3 tests/acceptance.py                 # baseline + gate report (exit 1 only if baseline fails)
   python3 tests/acceptance.py --gate-only     # no build/tests; works on any OS
@@ -22,6 +26,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'build' / 'acceptance'
 SHA = re.compile(r'^[0-9a-f]{40}$')
+SHA256 = re.compile(r'^[0-9a-f]{64}$')
 
 # ---------- baseline ----------
 
@@ -90,14 +95,41 @@ def common(ev):
         errs.append('environments 为空（需写明 OS/架构）')
     if ev.get('credentials') not in ('none', 'synthetic', 'authorized_test'):
         errs.append('credentials 必须是 none / synthetic / authorized_test（不能用真实平台账号）')
-    if not ev.get('raw_results'):
-        errs.append('raw_results 为空（需指向原始记录，例如 CI 产物或日志链接）')
+    raw = ev.get('raw_results')
+    if isinstance(raw, dict):
+        if not str(raw.get('url', '')).startswith('https://') or not SHA256.match(str(raw.get('sha256', ''))):
+            errs.append('raw_results 为对象时需要 https url 和 64 位 sha256')
+    elif not (isinstance(raw, str) and raw.startswith('evidence/') and (ROOT / raw).is_file()):
+        errs.append('raw_results 必须是 evidence/ 下存在的原始记录文件，或 {url, sha256}')
+    return errs
+
+PRODUCT_FILES = ['main.swift', 'build.py']
+
+def git(*args):
+    return subprocess.run(['git', *args], cwd=ROOT, capture_output=True, text=True)
+
+def provenance(ev, release_commit):
+    """Evidence must describe code that is actually in this history and unchanged since."""
+    commit = str(ev.get('tested_commit', ''))
+    if not SHA.match(commit):
+        return []  # reported by common()
+    if git('cat-file', '-e', f'{commit}^{{commit}}').returncode != 0:
+        return [f'tested_commit {commit[:7]} 不在仓库历史里（CI 需要完整历史 fetch-depth: 0）']
+    target = release_commit or 'HEAD'
+    errs = []
+    if git('merge-base', '--is-ancestor', commit, target).returncode != 0:
+        errs.append(f'tested_commit {commit[:7]} 不是 {target[:12]} 的祖先')
+    elif git('diff', '--quiet', commit, target, '--', *PRODUCT_FILES).returncode != 0:
+        errs.append(f'证据已过期：{", ".join(PRODUCT_FILES)} 在 {commit[:7]} 之后有改动，需要重新测')
+    matrix = ev.get('matrix_preregistered')
+    if matrix is not None and git('cat-file', '-e', f'{commit}:{matrix}').returncode != 0:
+        errs.append(f'matrix_preregistered {matrix} 在 tested_commit 时还不存在（不算事先登记）')
     return errs
 
 def eval_workflow_success(item, ev):
     errs, notes = [], []
-    if not ev.get('matrix_preregistered'):
-        errs.append('matrix_preregistered 为空（需指向事先登记的场景矩阵）')
+    if not str(ev.get('matrix_preregistered', '')).startswith(('docs/', 'tests/')):
+        errs.append('matrix_preregistered 必须指向 docs/ 或 tests/ 下事先提交的场景矩阵')
     flows = ev.get('workflows', {})
     for name in item['workflows']:
         w = flows.get(name)
@@ -156,8 +188,8 @@ def eval_transfer(item, ev):
     if ev.get('same_enforcement_mechanism') is not True:
         errs.append('same_enforcement_mechanism 必须为 true')
     gaps = ev.get('gaps_document', '')
-    if not gaps or not (ROOT / gaps).is_file():
-        errs.append('gaps_document 必须指向仓库里存在的差距文档')
+    if not str(gaps).startswith('docs/') or not (ROOT / gaps).is_file():
+        errs.append('gaps_document 必须指向 docs/ 下存在的差距文档')
     return errs, []
 
 def eval_network_extension(item, ev):
@@ -170,7 +202,7 @@ def eval_network_extension(item, ev):
 EVALUATORS = dict(workflow_success=eval_workflow_success, critical_failures=eval_critical_failures,
                   lab_cases=eval_lab_cases, transfer=eval_transfer, network_extension=eval_network_extension)
 
-def evaluate_gate():
+def evaluate_gate(release_commit=None):
     manifest = json.loads((ROOT / 'release-gate.json').read_text(encoding='utf-8'))
     results = []
     for item in manifest['items']:
@@ -181,7 +213,7 @@ def evaluate_gate():
             try:
                 ev = json.loads(path.read_text(encoding='utf-8'))
                 errs, notes = EVALUATORS[item['kind']](item, ev)
-                errs = common(ev) + errs
+                errs = common(ev) + provenance(ev, release_commit) + errs
             except (ValueError, TypeError, AttributeError) as e:
                 errs, notes = [f'证据文件格式错误：{e}'], []
         results.append(dict(id=item['id'], title=item['title'], met=not errs, problems=errs, notes=notes,
@@ -209,6 +241,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--gate-only', action='store_true', help='skip build/tests (works off macOS)')
     ap.add_argument('--require-gate', action='store_true', help='fail unless every gate item is met')
+    ap.add_argument('--release-commit', help='commit being released; evidence must be its ancestor with unchanged product code')
     args = ap.parse_args()
 
     baseline = []
@@ -220,7 +253,7 @@ def main():
             baseline.append(run_step('branding (tests/branding.py)', [py, 'tests/branding.py']))
         baseline.append(run_step('gate evaluator self-test (tests/gate_selftest.py)', [py, 'tests/gate_selftest.py']))
         baseline.append(hygiene())
-    gate = evaluate_gate()
+    gate = evaluate_gate(args.release_commit)
     all_met = all(g['met'] for g in gate)
     if not args.gate_only:
         baseline.append(readme_consistent(all_met))
