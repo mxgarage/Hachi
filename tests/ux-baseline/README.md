@@ -7,6 +7,12 @@ and commit the baseline was rendered at.
 These files always come from the CI runner (`macos-15`), never from a developer Mac: scale, fonts and OS version
 differ, so a local render would never match.
 
+Comparison is exact (no tolerance). Three independent CI renders of the same commit were pixel-identical
+(PR #14), so a difference means either the UI changed or the runner image did (`macos-15` is a moving image).
+The report says when the runner differs from `baseline.json`. It still fails, because the two cases cannot be told
+apart from pixels; when only the runner changed, refresh the baseline in a separate PR so the refresh is reviewed
+on its own.
+
 ## Accepting an intended change
 
 1. Push the change. The `Account-free macOS verification` job fails at "UX screenshots match baseline" and uploads

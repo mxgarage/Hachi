@@ -4,7 +4,6 @@ tests/ux-baseline/ and fail on any difference.
   python3 tests/ux_baseline.py                  # compare build/acceptance/ux/ with tests/ux-baseline/
   python3 tests/ux_baseline.py --selftest       # check the PNG reader/writer and the diff (any OS)
   python3 tests/ux_baseline.py --import-log LOG # take a new baseline from a CI job log (see below)
-  python3 tests/ux_baseline.py --accept         # take the current local renders as the new baseline
 
 Output: build/acceptance/ux-diff/ (uploaded with the CI artifact): for each differing state a PNG with three panels
 (baseline | this build | changed pixels in magenta), and index.html. build/acceptance/ux-candidate-baseline/ holds
@@ -215,7 +214,9 @@ def compare():
         if changed_env:
             drift = ('Rendering environment differs from the baseline\'s ('
                      + ', '.join(f'{k}: {meta.get(k)} -> {env.get(k)}' for k in changed_env)
-                     + '); the difference may come from the runner, not from Hachi. Check the diff images.')
+                     + '); the difference may come from a runner image update, not from Hachi. Check the diff images; '
+                     'if only the runner changed, refresh the baseline in its own PR (tests/ux-baseline/README.md). '
+                     'This still fails on purpose: a runner change and a real UI change look the same here.')
     (DIFF / 'index.html').write_text(
         '<!doctype html><meta charset="utf-8"><title>Hachi UX diff</title>'
         '<style>body{font:14px -apple-system,sans-serif;margin:16px}td,th{border:1px solid #ccc;padding:8px;'
@@ -335,13 +336,9 @@ def main():
     g = ap.add_mutually_exclusive_group()
     g.add_argument('--selftest', action='store_true')
     g.add_argument('--import-log', metavar='LOG')
-    g.add_argument('--accept', action='store_true', help='take the current local renders (build/acceptance/ux/) as baseline')
     args = ap.parse_args()
     if args.import_log:
         import_log(args.import_log)
-    elif args.accept:
-        compare()
-        replace_baseline(CANDIDATE)
     else:
         selftest()
         if not args.selftest:
