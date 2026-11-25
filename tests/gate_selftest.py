@@ -16,8 +16,9 @@ base = dict(tested_commit=head, environments=['macOS 15 arm64'], credentials='sy
 good = {
     'G1': dict(base, matrix_preregistered='tests/lab.py', workflows={
         w: dict(attempts=400, successes=396, seeds=[1, 2, 3], timing=dict(median_s=4.2, p95_s=9.8)) for w in items['G1']['workflows']}),
-    'G2': dict(base, observer=dict(independent=True, kind='gateway pcap'), protected_flows=50, control_workloads=10,
-               direct_or_wrong_route_egress=0, control_interruptions=0, control_route_changes=0),
+    'G2': dict(base, observer=dict(independent=True, kind='gateway pcap'), scenarios={
+        c: dict(protected_flows=50, control_workloads=10, direct_or_wrong_route_egress=0, control_interruptions=0,
+                control_route_changes=0) for c in items['G3']['cases'] if c.startswith('inject_')}),
     'G3': dict(base, cases={c: dict(result='pass') for c in items['G3']['cases']}),
     'G4': dict(base, fixture_clients=['fixture'], signed_clients=['client'], same_enforcement_mechanism=True,
                gaps_document='docs/roundtable.md'),
@@ -39,13 +40,16 @@ bad = [
     ('G1', lambda e: e['workflows']['desktop'].update(attempts=400.0)),
     ('G1', lambda e: e['workflows']['desktop'].pop('timing')),
     ('G1', lambda e: e.update(matrix_preregistered='tests/../README.md')),
-    ('G2', lambda e: e.update(direct_or_wrong_route_egress=0.5)),
-    ('G2', lambda e: e.update(control_interruptions='0')),
-    ('G2', lambda e: e.update(protected_flows=1e999)),
+    ('G2', lambda e: e['scenarios']['inject_update'].update(direct_or_wrong_route_egress=0.5)),
+    ('G2', lambda e: e['scenarios']['inject_update'].update(control_interruptions='0')),
+    ('G2', lambda e: e['scenarios']['inject_update'].update(protected_flows=1e999)),
     ('G4', lambda e: e.update(gaps_document='/etc/hosts')),
-    ('G2', lambda e: e.update(direct_or_wrong_route_egress=1)),
+    ('G2', lambda e: e['scenarios']['inject_sleep_wake'].update(direct_or_wrong_route_egress=1)),
+    ('G2', lambda e: e['scenarios'].pop('inject_route_change')),
+    ('G2', lambda e: e['scenarios']['inject_update'].update(protected_flows=1)),
+    ('G2', lambda e: e['scenarios']['inject_update'].update(control_workloads=0)),
     ('G2', lambda e: e['observer'].update(independent=False)),
-    ('G2', lambda e: e.pop('control_route_changes')),
+    ('G2', lambda e: e['scenarios']['inject_interface_switch'].pop('control_route_changes')),
     ('G3', lambda e: e['cases'].pop('dns_ipv6')),
     ('G3', lambda e: e['cases']['inject_sleep_wake'].update(result='fail')),
     ('G3', lambda e: e['cases']['dns_udp'].update(result='not_supported')),  # not an optional case

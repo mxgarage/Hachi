@@ -129,7 +129,10 @@ def common(item, ev):
         errs.append('raw_results.url 必须是 https 链接')
     return errs
 
-PRODUCT_FILES = ['main.swift', 'build.py']
+# Everything that can affect the built app: all tracked files except docs, evidence, tests, CI and markdown.
+# (git pathspec, so new source files, resources or a Network Extension target are covered automatically)
+PRODUCT_FILES = ['.', ':(exclude)docs/', ':(exclude)evidence/', ':(exclude)tests/', ':(exclude).github/',
+                 ':(exclude)*.md', ':(exclude)release-gate.json', ':(exclude).gitignore']
 
 def git(*args):
     return subprocess.run(['git', *args], cwd=ROOT, capture_output=True, text=True)
@@ -146,7 +149,8 @@ def provenance(ev, release_commit):
     if git('merge-base', '--is-ancestor', commit, target).returncode != 0:
         errs.append(f'tested_commit {commit[:7]} 不是 {target[:12]} 的祖先')
     elif git('diff', '--quiet', commit, target, '--', *PRODUCT_FILES).returncode != 0:
-        errs.append(f'证据已过期：{", ".join(PRODUCT_FILES)} 在 {commit[:7]} 之后有改动，需要重新测')
+        changed = git('diff', '--name-only', commit, target, '--', *PRODUCT_FILES).stdout.split()
+        errs.append(f'证据已过期：产品文件（{", ".join(changed[:5])}）在 {commit[:7]} 之后有改动，需要重新测')
     matrix = ev.get('matrix_preregistered')
     if isinstance(matrix, str):
         if git('cat-file', '-e', f'{commit}:{matrix}').returncode != 0:
@@ -195,15 +199,28 @@ def eval_critical_failures(item, ev):
     obs = ev.get('observer', {})
     if obs.get('independent') is not True:
         errs.append('observer.independent 必须为 true（应用日志不算）')
-    for key in ('protected_flows', 'control_workloads'):
-        if not count(ev.get(key)):
-            errs.append(f'{key} 必须是正整数')
-    for key in ('direct_or_wrong_route_egress', 'control_interruptions', 'control_route_changes'):
-        if key not in ev:
-            errs.append(f'缺少 {key}')
-        elif count(ev[key]) != 0:
-            errs.append(f'{key} = {ev[key]!r}（必须是整数 0）')
-    return errs, [f'观察器：{obs.get("kind", "?")}']
+    # Zero critical failures must hold in every fault-injection scenario of G3, each with enough traffic.
+    lab = next(i for i in MANIFEST['items'] if i['kind'] == 'lab_cases')
+    required = [c for c in lab['cases'] if c.startswith('inject_')]
+    scenarios = ev.get('scenarios', {})
+    if not isinstance(scenarios, dict):
+        scenarios = {}
+    missing = [s for s in required if not isinstance(scenarios.get(s), dict)]
+    if missing:
+        errs.append('故障矩阵缺场景：' + ', '.join(missing))
+    for name in required:
+        s = scenarios.get(name)
+        if not isinstance(s, dict):
+            continue
+        flows = count(s.get('protected_flows'))
+        if flows is None or flows < item['min_flows_per_scenario']:
+            errs.append(f'{name}: protected_flows 必须是 ≥ {item["min_flows_per_scenario"]} 的整数')
+        if not count(s.get('control_workloads')):
+            errs.append(f'{name}: control_workloads 必须是正整数')
+        for key in ('direct_or_wrong_route_egress', 'control_interruptions', 'control_route_changes'):
+            if count(s.get(key)) != 0:
+                errs.append(f'{name}: {key} = {s.get(key)!r}（必须是整数 0）')
+    return errs, [f'观察器：{obs.get("kind", "?")}；{len(required) - len(missing)}/{len(required)} 个故障场景有数据']
 
 def unsupported_workflows():
     """Workflows that G1 evidence marks unsupported (only optional ones count, see eval_workflow_success)."""

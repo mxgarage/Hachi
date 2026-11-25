@@ -20,6 +20,7 @@
       "title": "关键失败为零：受保护流量无直连或错路出口，对照工作负载不中断",
       "readme": "zero observed direct or wrong-route egress for protected flows ... Verify at an independent network observer; app logs alone do not count.",
       "evidence": "evidence/G2-critical-failures.json",
+      "min_flows_per_scenario": 20,
       "next_step": "做一个独立于 Hachi 进程的网络观察器（例如在隔离网关或独立 VM 上抓包统计），让故障矩阵的结果由观察器而不是应用日志给出。"
     },
     {
