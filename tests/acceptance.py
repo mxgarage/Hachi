@@ -15,6 +15,7 @@ claims, made by committing the evidence.
 Reports: build/acceptance/report.md and report.json.
 """
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -115,12 +116,19 @@ def common(item, ev):
     allowed = tuple(item.get('allowed_credentials', DEFAULT_CREDENTIALS))
     if ev.get('credentials') not in allowed:
         errs.append(f'credentials 必须是 {" / ".join(allowed)}（不能用真实平台账号）')
+    # raw records are pinned by hash: {path: evidence/..., sha256} (hash checked) or {url: https://..., sha256}
     raw = ev.get('raw_results')
-    if isinstance(raw, dict):
-        if not str(raw.get('url', '')).startswith('https://') or not SHA256.match(str(raw.get('sha256', ''))):
-            errs.append('raw_results 为对象时需要 https url 和 64 位 sha256')
-    elif not repo_file(raw, ('evidence/',)):
-        errs.append('raw_results 必须是 evidence/ 下存在的原始记录文件，或 {url, sha256}')
+    if not isinstance(raw, dict) or not SHA256.match(str(raw.get('sha256', ''))):
+        errs.append('raw_results 必须是 {path 或 url, sha256}（64 位小写十六进制）')
+    elif 'path' in raw:
+        if not repo_file(raw['path'], ('evidence/',)):
+            errs.append('raw_results.path 必须是 evidence/ 下存在的原始记录文件')
+        elif hashlib.sha256((ROOT / raw['path']).read_bytes()).hexdigest() != raw['sha256']:
+            errs.append('raw_results.sha256 与文件内容不符')
+    elif not str(raw.get('url', '')).startswith('https://'):
+        errs.append('raw_results.url 必须是 https 链接')
+    if ev.get('credentials') == 'authorized_test' and not repo_file(ev.get('authorization_document'), ('docs/',)):
+        errs.append('使用 authorized_test 时必须给出 docs/ 下的 authorization_document（谁授权、授权范围、专用测试凭据，而非用户的平台账号）')
     return errs
 
 PRODUCT_FILES = ['main.swift', 'build.py']
@@ -142,8 +150,11 @@ def provenance(ev, release_commit):
     elif git('diff', '--quiet', commit, target, '--', *PRODUCT_FILES).returncode != 0:
         errs.append(f'证据已过期：{", ".join(PRODUCT_FILES)} 在 {commit[:7]} 之后有改动，需要重新测')
     matrix = ev.get('matrix_preregistered')
-    if isinstance(matrix, str) and git('cat-file', '-e', f'{commit}:{matrix}').returncode != 0:
-        errs.append(f'matrix_preregistered {matrix} 在 tested_commit 时还不存在（不算事先登记）')
+    if isinstance(matrix, str):
+        if git('cat-file', '-e', f'{commit}:{matrix}').returncode != 0:
+            errs.append(f'matrix_preregistered {matrix} 在 tested_commit 时还不存在（不算事先登记）')
+        elif git('diff', '--quiet', commit, target, '--', matrix).returncode != 0:
+            errs.append(f'matrix_preregistered {matrix} 在 tested_commit 之后被改过，需要按新矩阵重新测')
     return errs
 
 def eval_workflow_success(item, ev):
