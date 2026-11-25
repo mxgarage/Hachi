@@ -190,9 +190,9 @@ func makeAlert(_ result: Result) -> NSAlert {
 /// Draws the items of a real makeMenu() menu (titles, enabled state, separators, shortcuts). It is a rendering of
 /// the menu's content, not a capture of the system menu, which needs a logged-in screen.
 final class MenuPicture: NSView {
-    let menu: NSMenu
+    let source: NSMenu
     init(_ menu: NSMenu) {
-        self.menu = menu
+        self.source = menu
         let height = menu.items.reduce(CGFloat(10)) { $0 + ($1.isSeparatorItem ? 11 : 22) }
         super.init(frame: NSRect(x: 0, y: 0, width: 300, height: height))
     }
@@ -204,7 +204,7 @@ final class MenuPicture: NSView {
         NSColor.separatorColor.setStroke(); shape.stroke()
         let font = NSFont.menuFont(ofSize: 0)
         var y: CGFloat = 5
-        for item in menu.items {
+        for item in source.items {
             if item.isSeparatorItem {
                 NSColor.separatorColor.setFill(); NSRect(x: 10, y: y + 5, width: bounds.width - 20, height: 1).fill()
                 y += 11; continue
