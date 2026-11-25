@@ -24,7 +24,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- evidence/ ':(exclude)evidence/README.md')
-          gate=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- release-gate.json tests/acceptance.py tests/gate_selftest.py .github/workflows/ .github/scripts/)
+          gate=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- release-gate.json tests/acceptance.py tests/gate_selftest.py .github/workflows/ .github/scripts/ AGENTS.md evidence/README.md)
           [ -z "$changed$gate" ] && exit 0
           why=""
           case "$HEAD_REF" in claude/*|codex/*|muse/*) why="agent branch $HEAD_REF";; esac

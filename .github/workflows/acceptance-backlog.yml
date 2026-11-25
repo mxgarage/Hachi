@@ -1,5 +1,5 @@
 name: Acceptance backlog
-# 自迭代闭环：每周（以及门槛清单或证据变化时）评估发布门槛，
+# 自迭代闭环：每次推到 main 以及每周评估发布门槛，
 # 给每个未满足项保持一条 `acceptance` issue；格式检查通过后在 issue 里注明，由维护者手动关闭，
 # 之后再次不满足（如证据过期）会重新打开。
 # 它不打 `claude` 标签：要不要让 Claude 开始实现，由维护者在 issue 上打标签决定。
@@ -8,8 +8,8 @@ on:
     - cron: '17 1 * * 1'
   workflow_dispatch:
   push:
+    # every push to main: a product change makes evidence stale, so the issue should reopen right away
     branches: [main]
-    paths: ['release-gate.json', 'evidence/**', 'tests/acceptance.py', '.github/scripts/sync_acceptance_issues.py']
 permissions:
   contents: read
   issues: write

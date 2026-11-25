@@ -34,7 +34,7 @@
       "evidence": "evidence/G2-critical-failures.json",
       "min_flows_per_scenario": 20,
       "scenarios_basis": "every G3 case, normal and inject_*; MCP cases only skipped when met G1 evidence marks MCP unsupported",
-      "next_step": "做一个独立于 Hachi 进程的网络观察器（例如在隔离网关或独立 VM 上抓包统计），让故障矩阵的结果由观察器而不是应用日志给出。",
+      "next_step": "做一个独立于 Hachi 进程的网络观察器（例如在隔离网关或独立 VM 上抓包统计），让故障矩阵的结果由观察器而不是应用日志给出。范围：只在本地合成夹具和隔离网络上做，只用合成账号，不针对任何真实平台的地区或账号检测，不帮人绕开地区限制或平台执行。",
       "agent_ok": true
     },
     {
@@ -77,7 +77,7 @@
       "title": "迁移证据：夹具客户端和真实签名客户端走同一套系统执行机制",
       "readme": "Transfer evidence: exercise the same final OS enforcement mechanism across fixture clients and real signed client binaries in isolated homes.",
       "evidence": "evidence/G4-transfer.json",
-      "next_step": "先在隔离 home 里做无凭据运行，核对进程和签名身份、辅助进程、重定向和 DNS 行为，差距写进 docs/ 下的文档并在证据里引用。不使用任何真实平台账号。",
+      "next_step": "先在隔离 home 里做无凭据运行，核对进程和签名身份、辅助进程、重定向和 DNS 行为，差距写进 docs/ 下的文档并在证据里引用。不使用任何真实平台账号。范围：只在本地合成夹具和隔离网络上做，只用合成账号，不针对任何真实平台的地区或账号检测，不帮人绕开地区限制或平台执行。",
       "agent_ok": true
     },
     {
@@ -87,7 +87,7 @@
       "title": "签名 Network Extension 可行性，以及扩展不可用时的独立测试",
       "readme": "Key blocker: signed Network Extension feasibility and independent test of behavior when extensions are unavailable.",
       "evidence": "evidence/G5-network-extension.json",
-      "next_step": "写一份可行性文档：需要的签名和 entitlement、没有开发者账号时能做到哪一步、扩展不可用时应用应该怎样提醒用户。需要真实签名的部分由维护者完成。",
+      "next_step": "写一份可行性文档：需要的签名和 entitlement、没有开发者账号时能做到哪一步、扩展不可用时应用应该怎样提醒用户。需要真实签名的部分由维护者完成。范围：只在本地合成夹具和隔离网络上做，只用合成账号，不针对任何真实平台的地区或账号检测，不帮人绕开地区限制或平台执行。",
       "agent_ok": true
     }
   ]
