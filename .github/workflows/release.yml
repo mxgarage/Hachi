@@ -16,6 +16,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
+    # 推 tag 就等于发布。只接受维护者账号推的 tag；Claude GitHub App（claude[bot]）等其他主体推的 tag 直接跳过。
+    # 注意：代理如果用维护者账号操作，这里区分不出来，仍然靠约定（AGENTS.md）。
+    if: github.actor == 'daniel-to-the-moon'
     runs-on: macos-15
     timeout-minutes: 20
     outputs:
