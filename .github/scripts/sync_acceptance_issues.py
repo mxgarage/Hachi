@@ -4,7 +4,8 @@ Reads build/acceptance/report.json from tests/acceptance.py --gate-only.
 - unmet item, no issue  -> create it
 - unmet item, issue closed by this workflow -> reopen it (closed by a person -> leave it, warn)
 - unmet item, body changed -> update it
-- met item, issue open  -> comment and close it as completed
+- met format_only item -> mark the body (open or closed), leave closing to the maintainer
+- met item that CI fully verifies (none today), issue open -> comment and close it as completed
 Never adds the `claude` label: starting an implementation stays a human decision.
 Env: GITHUB_TOKEN, GITHUB_REPOSITORY. --dry-run prints actions without calling GitHub.
 """
@@ -115,13 +116,16 @@ def main():
         if g['met'] and g.get('format_only'):
             # CI only checked format and history; the maintainer confirms and closes the issue by hand.
             body = body_for(g)
-            if issue and issue['state'] == 'open' and (norm(issue.get('body')) != norm(body)):
+            # Write MET_MARK into the body whether the issue is open or already closed by a person: a later
+            # regression reopens it only if the mark is there. The state is never changed here.
+            if issue and norm(issue.get('body')) != norm(body):
                 gh('PATCH', f'/repos/{REPO}/issues/{issue["number"]}', dict(body=body))
-                print(f'{g["id"]}: format check passed, #{issue["number"]} left open for the maintainer')
+                print(f'{g["id"]}: format check passed, #{issue["number"]} marked ({issue["state"]}) for the maintainer')
             else:
                 print(f'{g["id"]}: format check passed')
             continue
         if g['met']:
+            # Only for items whose content CI can verify (no format_only); every current item is format_only.
             if issue and issue['state'] == 'open':
                 gh('POST', f'/repos/{REPO}/issues/{issue["number"]}/comments', dict(body='自动验收显示这一项已满足，关闭。'))
                 gh('PATCH', f'/repos/{REPO}/issues/{issue["number"]}', dict(state='closed', state_reason='completed'))

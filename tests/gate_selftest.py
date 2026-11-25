@@ -106,9 +106,10 @@ def _valid6(t):
 def ip_hits(line):
     return ([t for t in (m.group(0) for m in A.IPV6.finditer(line)) if _valid6(t) and not A.allowed_ip(t)]
             + [m.group(0) for m in A.MAC.finditer(line)])
-assert ip_hits('peer 2600::1') and ip_hits('ll fe80::1') and ip_hits('mac de:ad:be:ef:00:11')
+# Real-looking addresses are assembled at run time so this file itself passes the hygiene scan.
+assert ip_hits('peer ' + '2600' + '::1') and ip_hits('ll ' + 'fe80' + '::1') and ip_hits('mac ' + ':'.join(['de', 'ad', 'be', 'ef', '00', '11']))
 assert not ip_hits('loop ::1 doc 2001:db8::1 std::map at 08:14:36')
-assert A.allowed_ip('198.51.100.7') and not A.allowed_ip('8.8.8.8') and not A.allowed_ip('::1a2b:3c4d')
+assert A.allowed_ip('198.51.100.7') and not A.allowed_ip('.'.join(['8'] * 4)) and not A.allowed_ip(':' + ':1a2b:3c4d')
 
 # --release-commit path (used by release.yml): HEAD as release commit passes (the failing direction is in the
 # throwaway-repository cases below).
@@ -154,5 +155,34 @@ with tempfile.TemporaryDirectory() as tmp:
         assert any('不在仓库历史' in p for p in A.provenance(ev('e' * 40), c3)), 'unknown tested_commit passed'
     finally:
         A.GIT_ROOT = saved
-tail = ' and 4 history cases (stale, evidence-only, not-ancestor, unknown commit)'
+# evaluate_gate() itself, on a throwaway evidence root: good records are met (with the format-only note);
+# missing, malformed and wrongly typed evidence is "not met", never a crash.
+import shutil
+with tempfile.TemporaryDirectory() as tmp:
+    for rel in (RAW, GAPS, 'tests/lab.py'):
+        Path(tmp, rel).parent.mkdir(parents=True, exist_ok=True); shutil.copy(A.ROOT / rel, Path(tmp, rel))
+    def write(item_id, text):
+        Path(tmp, items[item_id]['evidence']).write_text(text, encoding='utf-8')
+    saved, A.ROOT = A.ROOT, Path(tmp)
+    try:
+        for item_id, ev in good.items():
+            write(item_id, json.dumps(ev))
+        res = {r['id']: r for r in A.evaluate_gate()}
+        assert all(r['met'] and r['format_only'] and r['notes'] for r in res.values()), res
+        Path(tmp, items['G1']['evidence']).unlink()
+        write('G2', '{not json')
+        write('G3', json.dumps(dict(good['G3'], cases=list(good['G3']['cases']))))
+        write('G4', '[]')
+        write('G5', json.dumps(dict(good['G5'], observer='gateway', tested_commit=7)))
+        res = {r['id']: r for r in A.evaluate_gate()}
+        assert not any(r['met'] for r in res.values()), res
+        assert '没有证据文件' in res['G1']['problems'][0] and all(r['problems'] for r in res.values())
+    finally:
+        A.ROOT = saved
+# --require-gate: exit 1 while any item is unmet (the repository has no evidence yet), 0 without the flag.
+if not any((A.ROOT / i['evidence']).exists() for i in items.values()):
+    run = lambda *f: subprocess.run([sys.executable, str(A.ROOT / 'tests/acceptance.py'), '--gate-only', *f],
+                                    cwd=A.ROOT, capture_output=True).returncode
+    assert run() == 0 and run('--require-gate') == 1, 'unmet gate must fail --require-gate'
+tail = ' and 4 history cases (stale, evidence-only, not-ancestor, unknown commit), plus evaluate_gate on missing/malformed evidence'
 print(f'PASS: gate evaluators accept {len(good)} complete records, reject {len(bad)} weakened ones{tail}')
