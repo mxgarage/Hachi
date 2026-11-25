@@ -16,6 +16,7 @@ Reports: build/acceptance/report.md and report.json.
 """
 import argparse
 import hashlib
+import ipaddress
 import json
 import math
 import os
@@ -36,6 +37,7 @@ def run_step(name, cmd):
     tail = (r.stdout + r.stderr).strip().splitlines()[-3:]
     return dict(name=name, ok=r.returncode == 0, detail=' / '.join(tail))
 
+# hygiene-patterns-begin (only these lines are exempt from the hygiene scan)
 SECRET_PATTERNS = [
     (re.compile(r'-----BEGIN [A-Z ]*PRIVATE KEY-----'), 'private key'),
     (re.compile(r'\bsk-ant-[A-Za-z0-9_-]{10,}'), 'Anthropic key'),
@@ -45,32 +47,46 @@ SECRET_PATTERNS = [
     (re.compile(r'/Users/(?!Shared/)[A-Za-z0-9._-]+/|/home/(?!runner/)[A-Za-z0-9._-]+/|[A-Za-z]:\\Users\\[^\\\s]+'), 'device path'),
 ]
 IPV4 = re.compile(r'(?<![\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\d.])')
-ALLOWED_IP_PREFIXES = ('127.', '0.0.0.0', '192.0.2.', '198.51.100.', '203.0.113.')
+ALLOWED_NETS = [ipaddress.ip_network(n) for n in
+                ('127.0.0.0/8', '0.0.0.0/32', '192.0.2.0/24', '198.51.100.0/24', '203.0.113.0/24',
+                 '::1/128', '2001:db8::/32')]
 IPV6 = re.compile(r'(?<![0-9A-Za-z:])(?:[0-9a-fA-F]{1,4}:){2,7}(?::|[0-9a-fA-F]{1,4})(?:[0-9a-fA-F:]*)(?![0-9A-Za-z:])')
-ALLOWED_IPV6_PREFIXES = ('2001:db8:', '2001:0db8:', '::1')
+# hygiene-patterns-end
+
+def allowed_ip(text):
+    try:
+        ip = ipaddress.ip_address(text)
+    except ValueError:
+        return False  # e.g. a MAC address: also device-identifying
+    return any(ip in net for net in ALLOWED_NETS if net.version == ip.version)
 
 def hygiene():
     files = subprocess.run(['git', 'ls-files', '-z'], cwd=ROOT, capture_output=True, check=True).stdout.split(b'\0')
     problems = []
     for f in filter(None, files):
         path = ROOT / f.decode()
-        if path.name == 'acceptance.py' and path.parent.name == 'tests':
-            continue  # this file holds the patterns themselves
         try:
             text = path.read_text(encoding='utf-8')
         except (UnicodeDecodeError, FileNotFoundError, IsADirectoryError):
             continue
+        exempt = False
         for n, line in enumerate(text.splitlines(), 1):
+            if path == Path(__file__).resolve():
+                if '# hygiene-patterns-begin' in line or '# hygiene-patterns-end' in line:
+                    exempt = '# hygiene-patterns-begin' in line
+                    continue
+                if exempt:
+                    continue
             for pattern, label in SECRET_PATTERNS:
                 if pattern.search(line):
                     problems.append(f'{path.relative_to(ROOT)}:{n} {label}')
             for m in IPV4.finditer(line):
                 ip = m.group(0)
-                if all(int(p) <= 255 for p in m.groups()) and not ip.startswith(ALLOWED_IP_PREFIXES):
+                if all(int(p) <= 255 for p in m.groups()) and not allowed_ip(ip):
                     problems.append(f'{path.relative_to(ROOT)}:{n} IP address {ip} (use 192.0.2.x/198.51.100.x/203.0.113.x)')
             for m in IPV6.finditer(line):
                 ip = m.group(0).lower()
-                if ip.count(':') >= 3 and re.search('[a-f]|::', ip) and not ip.startswith(ALLOWED_IPV6_PREFIXES):
+                if ip.count(':') >= 3 and re.search('[a-f]|::', ip) and not allowed_ip(ip):
                     problems.append(f'{path.relative_to(ROOT)}:{n} IPv6 address {ip} (use 2001:db8::/32)')
     return dict(name='repo hygiene (no keys, tokens, device paths, real IPs)', ok=not problems,
                 detail='; '.join(problems[:10]) or 'clean')
@@ -153,7 +169,8 @@ def provenance(ev, release_commit):
     target = release_commit or 'HEAD'
     errs = []
     if git('merge-base', '--is-ancestor', commit, target).returncode != 0:
-        errs.append(f'tested_commit {commit[:7]} 不是 {target[:12]} 的祖先')
+        errs.append(f'tested_commit {commit[:7]} 不是 {target[:12]} 的祖先'
+                    '（证据要在已合入 main 的提交上测；squash/rebase 合并会让 PR 分支上的提交不在 main 历史里）')
     elif git('diff', '--quiet', commit, target, '--', *PRODUCT_FILES).returncode != 0:
         changed = git('diff', '--name-only', commit, target, '--', *PRODUCT_FILES).stdout.split()
         errs.append(f'证据已过期：产品文件（{", ".join(changed[:5])}）在 {commit[:7]} 之后有改动，需要重新测')
