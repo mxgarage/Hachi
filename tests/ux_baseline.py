@@ -181,6 +181,10 @@ def compare():
         d.mkdir(parents=True)
     env = environment()
     commit = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    try:  # a pull_request run checks out a temporary merge commit; record the PR head, which stays in history
+        commit = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())['pull_request']['head']['sha']
+    except (KeyError, OSError, ValueError, TypeError):
+        pass
     for f in files:
         shutil.copy2(CURRENT / f, CANDIDATE / f)
     (CANDIDATE / META).write_text(json.dumps(dict(env, rendered_at_commit=commit, files=files), indent=2,
