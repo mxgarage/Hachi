@@ -269,7 +269,18 @@ func savePNG(_ view: NSView, appearance: NSAppearance, to url: URL) throws {
             failure = CocoaError(.fileWriteUnknown); return
         }
         view.cacheDisplay(in: view.bounds, to: rep)
-        guard let png = rep.representation(using: .png, properties: [:]) else { failure = CocoaError(.fileWriteUnknown); return }
+        // An alert's content view is transparent (the window draws its background), so a bare capture shows dark-mode
+        // text on nothing: white on white in any viewer. Put the window background under every screenshot.
+        guard let flat = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: rep.pixelsWide, pixelsHigh: rep.pixelsHigh,
+                                          bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                          colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: flat) else { failure = CocoaError(.fileWriteUnknown); return }
+        NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = context
+        let full = NSRect(x: 0, y: 0, width: rep.pixelsWide, height: rep.pixelsHigh)
+        NSColor.windowBackgroundColor.setFill(); full.fill()
+        rep.draw(in: full, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+        NSGraphicsContext.restoreGraphicsState()
+        guard let png = flat.representation(using: .png, properties: [:]) else { failure = CocoaError(.fileWriteUnknown); return }
         do { try png.write(to: url) } catch { failure = error }
     }
     if let failure { throw failure }
@@ -298,7 +309,11 @@ func renderUI(into dir: URL) throws {
         return (name, MenuPicture(menu), texts)
     }
     func alertState(_ name: String, _ result: Result) -> (String, NSView, [String]) {
-        let alert = makeAlert(result); alert.layout()
+        let alert = makeAlert(result)
+        // The default alert icon (the app icon) is loaded asynchronously and is sometimes still a placeholder when
+        // drawn offscreen; draw the same artwork synchronously so the screenshots are stable.
+        alert.icon = hachiIcon(size: 128, badge: true)
+        alert.layout()
         return (name, alert.window.contentView!, [alert.messageText, alert.informativeText])
     }
     // Same shape as a real claude-safe / codex-safe --check-only output, so the screenshots show how a long,

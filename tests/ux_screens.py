@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import struct
 import subprocess
+import sys
 
 root = Path(__file__).resolve().parents[1]
 binary = root / 'build/Hachi.app/Contents/MacOS/Hachi'
@@ -36,6 +37,11 @@ for (name, look), s in states.items():
     w, h = png_size(out / s['file'])
     assert w >= 40 and h >= 20, f'{s["file"]} is only {w}x{h}'
     images[(name, look)] = (out / s['file']).read_bytes()
+# Screenshots must be opaque: a transparent alert background made dark-mode text invisible in any viewer.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ux_baseline import read_png
+for s in states.values():
+    assert min(read_png(out / s['file'])[2][3::4]) == 255, f'{s["file"]} has transparent pixels'
 # Only proves the appearance was applied (the background differs); readability in dark mode is UX-12 in the
 # manual checklist, not something this byte comparison shows.
 for name in EXPECTED:
