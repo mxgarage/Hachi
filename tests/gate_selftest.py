@@ -33,6 +33,9 @@ good = {
                gaps_document=GAPS),
     'G5': dict(base, signed_extension_loaded=True, data_plane_tested=True, unavailable_behavior_tested=True,
                feasibility_document=GAPS),
+    'G6': dict(base, appearances=['light', 'dark'], signed_off_by='maintainer', signed_off_at='2026-12-01',
+               screenshots_run=f'https://github.com/{A.repo_slug() or "example/hachi"}/actions/runs/123',
+               checks={i: dict(result='pass', note='ok') for i in A.checklist_ids(items['G6']['checklist'])}),
 }
 def set_counts(w, n, k):
     w.update(attempts=n, successes=k, by_scenario=dict(all=dict(attempts=n, successes=k)),
@@ -97,6 +100,20 @@ bad = [
     ('G1', lambda e: e.update(matrix_preregistered='tests/not-yet-written.md')),
     ('G5', lambda e: e.update(data_plane_tested=False)),
     ('G5', lambda e: e.update(tested_commit='main')),
+    ('G6', lambda e: e['checks'].pop('UX-09')),
+    ('G6', lambda e: e['checks']['UX-03'].update(result='fail')),
+    ('G6', lambda e: e['checks'].__setitem__('UX-02', 'pass')),  # bare string, not {result: pass}
+    ('G6', lambda e: e['checks'].__setitem__('UX-99', dict(result='pass'))),  # not in the checklist
+    ('G6', lambda e: e.update(checks=[])),
+    ('G6', lambda e: e.update(appearances=['light'])),  # dark mode not reviewed
+    ('G6', lambda e: e.update(screenshots_run='https://example.invalid/run/1')),
+    ('G6', lambda e: e.update(screenshots_run='https://github.com/someone/else/actions/runs/1')),  # other repo
+    ('G6', lambda e: e.update(signed_off_by='  ')),
+    ('G6', lambda e: e.pop('signed_off_at')),
+    ('G6', lambda e: e.update(signed_off_at='2026-99-99xyz')),
+    ('G6', lambda e: e.update(signed_off_at='2026-02-30')),
+    ('G6', lambda e: e.update(signed_off_at='2026-W01-1')),  # ISO week date, accepted by fromisoformat
+    ('G6', lambda e: e.update(credentials='real_account')),
 ]
 
 def problems(item_id, ev):
@@ -146,6 +163,9 @@ for item_id, weaken in bad:
     weaken(ev)
     assert problems(item_id, ev), (item_id, 'weakened evidence still passed')
 assert good.keys() == items.keys(), 'every gate item needs a self-test'
+# Pinned: removing a checklist item must be a visible change here too, not just in docs/ (AGENTS.md).
+assert A.repo_slug(), 'selftest needs to know this repository (origin remote or GITHUB_REPOSITORY)'
+assert sorted(good['G6']['checks']) == [f'UX-{i:02d}' for i in range(1, 14)], 'docs/ux-checklist.md items changed'
 # History checks run against a throwaway repository, so they work in shallow clones and do not depend on
 # the shape of this repo's real history: c1 product v1, c2 evidence-only change, c3 product change.
 import subprocess, tempfile
@@ -165,6 +185,21 @@ with tempfile.TemporaryDirectory() as tmp:
         assert any('过期' in p for p in A.provenance(ev(c1), c3)), 'stale evidence passed'
         assert any('祖先' in p for p in A.provenance(ev(c2), c1)), 'evidence newer than the release commit passed'
         assert any('不在仓库历史' in p for p in A.provenance(ev('e' * 40), c3)), 'unknown tested_commit passed'
+        # G6: the checklist (in docs/, so not a product file) must exist at tested_commit and be unchanged since.
+        doc = items['G6']['checklist']
+        Path(tmp, doc).parent.mkdir(); Path(tmp, doc).write_text('v1\n'); g('add', '.'); g('commit', '-qm', 'c4')
+        c4 = g('rev-parse', 'HEAD')
+        Path(tmp, doc).write_text('v2\n'); g('commit', '-qam', 'c5'); c5 = g('rev-parse', 'HEAD')
+        def ux_history(tested, target):
+            A.RELEASE_COMMIT = target
+            errs, _ = A.eval_ux_signoff(items['G6'], dict(good['G6'], tested_commit=tested))
+            A.RELEASE_COMMIT = None
+            return [e for e in errs if doc in e]
+        assert not ux_history(c4, c4), ux_history(c4, c4)
+        assert any('被改过' in e for e in ux_history(c4, c5)), 'sign-off against an older checklist passed'
+        assert any('不存在' in e for e in ux_history(c3, c4)), 'sign-off before the checklist existed passed'
+        # an unknown tested_commit is caught by provenance(), which evaluate_gate runs for every item including G6
+        assert any('不在仓库历史' in p for p in A.provenance(dict(good['G6'], tested_commit='e' * 40), c4))
     finally:
         A.GIT_ROOT = saved
 # evaluate_gate() itself, on a throwaway evidence root: good records are met (with the format-only note);
@@ -172,7 +207,7 @@ with tempfile.TemporaryDirectory() as tmp:
 import shutil
 with tempfile.TemporaryDirectory() as tmp:
     tmp = str(Path(tmp).resolve())  # macOS: /var -> /private/var; repo_file rejects paths that resolve elsewhere
-    for rel in (RAW, GAPS, 'tests/lab.py'):
+    for rel in (RAW, GAPS, 'tests/lab.py', items['G6']['checklist']):
         Path(tmp, rel).parent.mkdir(parents=True, exist_ok=True); shutil.copy(A.ROOT / rel, Path(tmp, rel))
     def write(item_id, text):
         Path(tmp, items[item_id]['evidence']).write_text(text, encoding='utf-8')
@@ -196,6 +231,7 @@ with tempfile.TemporaryDirectory() as tmp:
         write('G3', json.dumps(dict(good['G3'], cases=list(good['G3']['cases']))))
         write('G4', '[]')
         write('G5', json.dumps(dict(good['G5'], observer='gateway', tested_commit=7)))
+        write('G6', json.dumps(dict(good['G6'], checks=None)))
         res = {r['id']: r for r in A.evaluate_gate()}
         assert not any(r['met'] for r in res.values()), res
         assert '没有证据文件' in res['G1']['problems'][0] and all(r['problems'] for r in res.values())
@@ -210,5 +246,5 @@ if not any((A.ROOT / i['evidence']).exists() for i in items.values()):
         run = lambda *f: subprocess.run([sys.executable, str(A.ROOT / 'tests/acceptance.py'), '--gate-only', *f],
                                         cwd=A.ROOT, env=env, capture_output=True).returncode
         assert run() == 0 and run('--require-gate') == 1, 'unmet gate must fail --require-gate'
-tail = ' and 4 history cases (stale, evidence-only, not-ancestor, unknown commit), plus evaluate_gate on missing/malformed evidence'
+tail = ' and 8 history cases (stale, evidence-only, not-ancestor, unknown commit, 4 for the UX checklist), plus evaluate_gate on missing/malformed evidence'
 print(f'PASS: gate evaluators accept {len(good)} complete records, reject {len(bad)} weakened ones{tail}')

@@ -59,6 +59,8 @@ def body_for(g):
         start = ('维护者看过后给这条 issue 打 `claude` 标签，Claude 会在新分支上实现上面的下一步并开 PR'
                  '（只能由人打标签，工作流不会自动打）。范围：Hachi 只提醒用户当前的出口位置，不帮人绕开地区限制或平台执行；'
                  '实现和实验只用本地合成夹具、隔离网络和合成账号，不针对任何真实平台的地区或账号检测。')
+    elif g.get('agent_note'):
+        start = g['agent_note']
     else:
         start = ('**暂不交给代理。** 这一项涉及流量的强制路由或数据面，是否在 Hachi 的范围内（只提醒当前出口位置、'
                  '不帮人绕开地区限制或平台执行）需要维护者先确认。确认前请不要给这条 issue 打 `claude` 标签；'
@@ -75,9 +77,9 @@ def body_for(g):
 {problems}
 
 ## 怎样算完成
-`python3 tests/acceptance.py` 在 `{g['evidence']}` 上评估这一项（格式见 `release-gate.json` 和 `tests/acceptance.py`）。证据必须来自真实的实验运行和独立观察器，只能由维护者提交；代理不得手写或修改 `evidence/` 下的文件。
+`python3 tests/acceptance.py` 在 `{g['evidence']}` 上评估这一项（格式见 `release-gate.json` 和 `tests/acceptance.py`）。证据必须来自真实的运行（网络相关的项要有独立观察器，G6 是维护者本人在真机上的走查），只能由维护者提交；代理不得手写或修改 `evidence/` 下的文件。
 
-## 建议的下一步（可以交给代理做的部分）
+## 建议的下一步{'（可以交给代理做的部分）' if g.get('agent_ok') is True else ''}
 {g['next_step']}
 
 ## 怎样启动

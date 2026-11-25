@@ -138,9 +138,13 @@ struct Result: Codable {
 }
 
 func check(_ provider: String) -> Result {
+    runEntry(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin/\(provider)-safe"),
+             provider: provider)
+}
+
+func runEntry(_ entry: URL, provider: String) -> Result {
     let process = Process()
-    process.executableURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".local/bin/\(provider)-safe")
+    process.executableURL = entry
     process.arguments = ["--check-only"]
     let output = Pipe()
     process.standardOutput = output; process.standardError = output
@@ -155,10 +159,187 @@ func check(_ provider: String) -> Result {
     }
 }
 
+// Menu, alert and tooltip content, shared by the running app and by --render-ui (CI screenshots of every state).
+let pathTag = 1
+let idleTooltip = "Hachi · 观察模式（不拦截）"
+let checkingTooltip = "Hachi · 预检中"
+let networkWaiting = "系统网络：等待状态"
+func networkTitle(satisfied: Bool) -> String { "系统网络：" + (satisfied ? "可用（不是出口验证）" : "不可用或待建立") }
+
+func makeMenu(target: AnyObject?, action: Selector?) -> NSMenu {
+    let menu = NSMenu()
+    // Manual enabling, so that a check in progress really disables its row (autoenabling ignores isEnabled).
+    menu.autoenablesItems = false
+    for title in ["观察模式 · 不拦截运行中流量", networkWaiting, "浏览器授权 / MCP：未覆盖"] {
+        let row = NSMenuItem(title: title, action: nil, keyEquivalent: ""); row.isEnabled = false; menu.addItem(row)
+    }
+    menu.item(at: 1)?.tag = pathTag
+    menu.addItem(.separator())
+    for (label, provider) in [("Claude", "claude"), ("Codex", "codex")] {
+        let row = NSMenuItem(title: "检查 \(label) 出口", action: action, keyEquivalent: "")
+        row.representedObject = provider; row.target = target; menu.addItem(row)
+    }
+    menu.addItem(.separator())
+    menu.addItem(withTitle: "退出", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+    return menu
+}
+
+/// Marks a provider's row as checking (greyed out) or idle and returns the matching tooltip. Used by runCheck and
+/// by --render-ui. Only takes effect because makeMenu() turns off autoenablesItems (tests/ux_screens.py checks that).
+func setChecking(_ row: NSMenuItem, _ on: Bool) -> String {
+    row.isEnabled = !on
+    return on ? checkingTooltip : idleTooltip
+}
+
+func makeAlert(_ result: Result) -> NSAlert {
+    let alert = NSAlert()
+    alert.messageText = "\(result.provider.capitalized)：\(result.status == "passed" ? "预检通过" : "预检未通过")"
+    alert.informativeText = result.evidence + "\n\n未启动客户端。浏览器 OAuth、MCP 和运行中拦截未覆盖。"
+    return alert
+}
+
+/// Draws the items of a real makeMenu() menu (titles, enabled state, separators, shortcuts). It is a rendering of
+/// the menu's content, not a capture of the system menu, which needs a logged-in screen.
+final class MenuPicture: NSView {
+    let source: NSMenu
+    init(_ menu: NSMenu) {
+        self.source = menu
+        let height = menu.items.reduce(CGFloat(10)) { $0 + ($1.isSeparatorItem ? 11 : 22) }
+        super.init(frame: NSRect(x: 0, y: 0, width: 300, height: height))
+    }
+    required init?(coder: NSCoder) { nil }
+    override var isFlipped: Bool { true }
+    override func draw(_ dirtyRect: NSRect) {
+        let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 8, yRadius: 8)
+        NSColor.windowBackgroundColor.setFill(); shape.fill()
+        NSColor.separatorColor.setStroke(); shape.stroke()
+        let font = NSFont.menuFont(ofSize: 0)
+        var y: CGFloat = 5
+        for item in source.items {
+            if item.isSeparatorItem {
+                NSColor.separatorColor.setFill(); NSRect(x: 10, y: y + 5, width: bounds.width - 20, height: 1).fill()
+                y += 11; continue
+            }
+            let color: NSColor = item.isEnabled ? .labelColor : .tertiaryLabelColor
+            (item.title as NSString).draw(at: NSPoint(x: 14, y: y + 3), withAttributes: [.font: font, .foregroundColor: color])
+            if !item.keyEquivalent.isEmpty {
+                let key = ("⌘" + item.keyEquivalent.uppercased()) as NSString
+                let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.secondaryLabelColor]
+                key.draw(at: NSPoint(x: bounds.width - 14 - key.size(withAttributes: attrs).width, y: y + 3), withAttributes: attrs)
+            }
+            y += 22
+        }
+    }
+}
+
+/// The status item as it sits in the menu bar, with its tooltip drawn underneath (the system tooltip itself
+/// cannot be captured offscreen).
+final class MenuBarPicture: NSView {
+    let pose: Int, tooltip: String
+    init(pose: Int, tooltip: String) {
+        self.pose = pose; self.tooltip = tooltip
+        super.init(frame: NSRect(x: 0, y: 0, width: 240, height: 56))
+    }
+    required init?(coder: NSCoder) { nil }
+    override var isFlipped: Bool { true }
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.windowBackgroundColor.setFill(); bounds.fill()
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.toolTipsFont(ofSize: 0), .foregroundColor: NSColor.labelColor]
+        let text = tooltip as NSString
+        let size = text.size(withAttributes: attrs)
+        let bubble = NSRect(x: 8, y: 28, width: size.width + 12, height: size.height + 6)
+        let path = NSBezierPath(roundedRect: bubble, xRadius: 4, yRadius: 4)
+        NSColor.controlBackgroundColor.setFill(); path.fill(); NSColor.separatorColor.setStroke(); path.stroke()
+        text.draw(at: NSPoint(x: bubble.minX + 6, y: bubble.minY + 3), withAttributes: attrs)
+        let icon = hachiIcon(size: 19, badge: false, pose: pose)
+        let tinted = NSImage(size: icon.size, flipped: false) { rect in
+            icon.draw(in: rect); NSColor.labelColor.set(); rect.fill(using: .sourceAtop); return true
+        }
+        tinted.draw(in: NSRect(x: 14, y: 2.5, width: 19, height: 19), from: .zero, operation: .sourceOver,
+                    fraction: 1, respectFlipped: true, hints: nil)
+    }
+}
+
+func savePNG(_ view: NSView, appearance: NSAppearance, to url: URL) throws {
+    view.appearance = appearance
+    var failure: Error?
+    appearance.performAsCurrentDrawingAppearance {
+        view.layoutSubtreeIfNeeded()
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+            failure = CocoaError(.fileWriteUnknown); return
+        }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        guard let png = rep.representation(using: .png, properties: [:]) else { failure = CocoaError(.fileWriteUnknown); return }
+        do { try png.write(to: url) } catch { failure = error }
+    }
+    if let failure { throw failure }
+}
+
+/// Regression check for the in-progress row: with a real target/action, mark it checking and let the menu
+/// validate its items (as it does before opening). With autoenabling on, update() would re-enable the row.
+func checkingRowStaysDisabled() -> Bool {
+    let menu = makeMenu(target: NSApplication.shared, action: #selector(NSApplication.terminate(_:)))
+    guard let row = menu.items.first(where: { $0.representedObject as? String == "claude" }) else { return false }
+    _ = setChecking(row, true)
+    menu.update()
+    return !row.isEnabled
+}
+
+/// Writes a PNG of every menu-bar, menu and alert state in light and dark appearance, plus ui-states.json with
+/// the texts shown in each state. The evidence texts in the alerts are labelled as examples.
+func renderUI(into dir: URL) throws {
+    _ = NSApplication.shared
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    var states: [[String: Any]] = []
+    func menuState(_ name: String, _ change: (NSMenu) -> Void) -> (String, NSView, [String]) {
+        let menu = makeMenu(target: nil, action: nil)
+        change(menu)
+        let texts = menu.items.filter { !$0.isSeparatorItem }.map { ($0.isEnabled ? "" : "[disabled] ") + $0.title }
+        return (name, MenuPicture(menu), texts)
+    }
+    func alertState(_ name: String, _ result: Result) -> (String, NSView, [String]) {
+        let alert = makeAlert(result); alert.layout()
+        return (name, alert.window.contentView!, [alert.messageText, alert.informativeText])
+    }
+    let example = "示例输出（截图用，不是真实预检结果）"
+    let builders: [() -> (String, NSView, [String])] = [
+        { ("menubar-rest", MenuBarPicture(pose: 0, tooltip: idleTooltip), [idleTooltip]) },
+        { ("menubar-wag", MenuBarPicture(pose: maximumWagAngle, tooltip: idleTooltip), [idleTooltip]) },
+        { ("menubar-checking", MenuBarPicture(pose: 0, tooltip: setChecking(NSMenuItem(), true)), [checkingTooltip]) },
+        { menuState("menu-network-waiting") { _ in } },
+        { menuState("menu-network-available") { $0.item(withTag: pathTag)?.title = networkTitle(satisfied: true) } },
+        { menuState("menu-network-unavailable") { $0.item(withTag: pathTag)?.title = networkTitle(satisfied: false) } },
+        { menuState("menu-checking-claude") { m in
+            m.item(withTag: pathTag)?.title = networkTitle(satisfied: true)
+            if let row = m.items.first(where: { $0.representedObject as? String == "claude" }) { _ = setChecking(row, true) } } },
+        { alertState("alert-claude-passed", Result(provider: "claude", status: "passed", evidence: example)) },
+        { alertState("alert-claude-blocked", Result(provider: "claude", status: "blocked", evidence: example)) },
+        { alertState("alert-codex-passed", Result(provider: "codex", status: "passed", evidence: example)) },
+        { alertState("alert-codex-blocked", Result(provider: "codex", status: "blocked", evidence: example)) },
+        // the real failure path: run an entry that does not exist, as check() does when claude-safe is missing
+        { alertState("alert-entry-missing", runEntry(dir.appendingPathComponent("missing/claude-safe"), provider: "claude")) },
+    ]
+    for (label, name) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
+        guard let appearance = NSAppearance(named: name) else { continue }
+        for build in builders {
+            let (state, view, texts) = build()
+            let file = "\(state)-\(label).png"
+            try savePNG(view, appearance: appearance, to: dir.appendingPathComponent(file))
+            states.append(["state": state, "appearance": label, "file": file, "texts": texts])
+        }
+    }
+    let manifest: [String: Any] = ["states": states, "tooltips": ["idle": idleTooltip, "checking": checkingTooltip],
+                                   "menuAutoenablesItems": makeMenu(target: nil, action: nil).autoenablesItems,
+                                   "checkingRowStaysDisabled": checkingRowStaysDisabled(),
+                                   "note": "Menus are drawn from the real menu items; the system menu itself is not captured."]
+    let data = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
+    try data.write(to: dir.appendingPathComponent("ui-states.json"))
+}
+
 final class MenuAgent: NSObject, NSApplicationDelegate {
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let pathMonitor = NWPathMonitor()
-    let pathStatus = NSMenuItem(title: "系统网络：等待状态", action: nil, keyEquivalent: "")
+    var pathStatus = NSMenuItem()
     let startedAt = ProcessInfo.processInfo.systemUptime
     var wagTimer: Timer?
     var motionObserver: NSObjectProtocol?
@@ -166,26 +347,18 @@ final class MenuAgent: NSObject, NSApplicationDelegate {
     var currentPose = 0
     func applicationDidFinishLaunching(_ note: Notification) {
         showTail(pose: 0)
-        item.button?.toolTip = "Hachi · 观察模式（不拦截）"
+        item.button?.toolTip = idleTooltip
         item.button?.setAccessibilityLabel("Hachi 小八")
         motionObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in self?.updateTailAnimation() }
         updateTailAnimation()
-        let menu = NSMenu()
-        let scope = NSMenuItem(title: "观察模式 · 不拦截运行中流量", action: nil, keyEquivalent: "")
-        let uncovered = NSMenuItem(title: "浏览器授权 / MCP：未覆盖", action: nil, keyEquivalent: "")
-        menu.addItem(scope); menu.addItem(pathStatus); menu.addItem(uncovered); menu.addItem(.separator())
-        for (label, provider) in [("Claude", "claude"), ("Codex", "codex")] {
-            let row = NSMenuItem(title: "检查 \(label) 出口", action: #selector(runCheck(_:)), keyEquivalent: "")
-            row.representedObject = provider; row.target = self; menu.addItem(row)
-        }
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "退出", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let menu = makeMenu(target: self, action: #selector(runCheck(_:)))
+        pathStatus = menu.item(withTag: pathTag)!
         item.menu = menu
         pathMonitor.pathUpdateHandler = { [weak self] path in
-            let text = path.status == .satisfied ? "可用（不是出口验证）" : "不可用或待建立"
-            DispatchQueue.main.async { [weak self] in self?.pathStatus.title = "系统网络：\(text)" }
+            let title = networkTitle(satisfied: path.status == .satisfied)
+            DispatchQueue.main.async { [weak self] in self?.pathStatus.title = title }
         }
         pathMonitor.start(queue: DispatchQueue(label: "app.egress.path-observer"))
     }
@@ -220,18 +393,13 @@ final class MenuAgent: NSObject, NSApplicationDelegate {
     }
     @objc func runCheck(_ sender: NSMenuItem) {
         guard let provider = sender.representedObject as? String else { return }
-        sender.isEnabled = false
-        item.button?.toolTip = "Hachi · 预检中"
+        item.button?.toolTip = setChecking(sender, true)
         DispatchQueue.global(qos: .userInitiated).async {
             let result = check(provider)
             DispatchQueue.main.async {
-                sender.isEnabled = true
-                self.item.button?.toolTip = "Hachi · 观察模式（不拦截）"
-                let alert = NSAlert()
-                alert.messageText = "\(provider.capitalized)：\(result.status == "passed" ? "预检通过" : "预检未通过")"
-                alert.informativeText = result.evidence + "\n\n未启动客户端。浏览器 OAuth、MCP 和运行中拦截未覆盖。"
+                self.item.button?.toolTip = setChecking(sender, false)
                 NSApp.activate(ignoringOtherApps: true)
-                alert.runModal()
+                makeAlert(result).runModal()
             }
         }
     }
@@ -254,6 +422,9 @@ if !args.isEmpty {
        let tiff = hachiIcon(size: CGFloat(size), badge: args[0] == "--draw-icon", pose: pose).tiffRepresentation,
        let bitmap = NSBitmapImageRep(data: tiff), let png = bitmap.representation(using: .png, properties: [:]) {
         try png.write(to: URL(fileURLWithPath: args[2])); exit(0)
+    }
+    if args.count == 2, args[0] == "--render-ui" {
+        try renderUI(into: URL(fileURLWithPath: args[1])); exit(0)
     }
     guard args.count == 2, args[0] == "--check", ["claude", "codex"].contains(args[1]) else { exit(2) }
     let result = check(args[1]); let data = try JSONEncoder().encode(result)
