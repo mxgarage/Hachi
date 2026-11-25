@@ -35,6 +35,8 @@ SHA256 = re.compile(r'^[0-9a-f]{64}$')
 def run_step(name, cmd):
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     tail = (r.stdout + r.stderr).strip().splitlines()[-3:]
+    if r.returncode:  # full output in the job log; the report keeps only the tail
+        print(f'--- {name} failed ---\n{r.stdout}{r.stderr}', file=sys.stderr)
     return dict(name=name, ok=r.returncode == 0, detail=' / '.join(tail))
 
 # hygiene-patterns-begin (only these lines are exempt from the hygiene scan)
