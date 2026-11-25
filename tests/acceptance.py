@@ -5,7 +5,7 @@ README gate heading consistent with the evaluated gate.
 Release gate (release-gate.json): each item is evaluated from evidence/ files.
 Missing or malformed evidence is reported as not met, never as a pass.
 What this can check: format, thresholds, and consistency with git history (tested_commit is an
-ancestor, product code unchanged since, matrix committed before the test). What it cannot check:
+ancestor, product files unchanged since, matrix present at tested_commit and unchanged). What it cannot check:
 that a run really happened or the observer really was independent. Those are the maintainer's
 claims, made by committing the evidence.
 
@@ -42,12 +42,12 @@ SECRET_PATTERNS = [
     (re.compile(r'\bsk-[A-Za-z0-9]{32,}'), 'API key'),
     (re.compile(r'\b(ghp|gho|ghs|ghu)_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{30,}'), 'GitHub token'),
     (re.compile(r'\bAKIA[0-9A-Z]{16}\b'), 'AWS key'),
-    (re.compile(r'/Users/(?!Shared/)[A-Za-z0-9._-]+/'), 'device path'),
+    (re.compile(r'/Users/(?!Shared/)[A-Za-z0-9._-]+/|/home/(?!runner/)[A-Za-z0-9._-]+/|[A-Za-z]:\\Users\\[^\\\s]+'), 'device path'),
 ]
 IPV4 = re.compile(r'(?<![\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\d.])')
 ALLOWED_IP_PREFIXES = ('127.', '0.0.0.0', '192.0.2.', '198.51.100.', '203.0.113.')
 IPV6 = re.compile(r'(?<![0-9A-Za-z:])(?:[0-9a-fA-F]{1,4}:){2,7}(?::|[0-9a-fA-F]{1,4})(?:[0-9a-fA-F:]*)(?![0-9A-Za-z:])')
-ALLOWED_IPV6_PREFIXES = ('2001:db8:', '2001:0db8:', 'fe80:', '::1')
+ALLOWED_IPV6_PREFIXES = ('2001:db8:', '2001:0db8:', '::1')
 
 def hygiene():
     files = subprocess.run(['git', 'ls-files', '-z'], cwd=ROOT, capture_output=True, check=True).stdout.split(b'\0')
@@ -103,7 +103,8 @@ def repo_file(rel, prefixes):
     if not isinstance(rel, str) or not rel.startswith(prefixes):
         return False
     path = (ROOT / rel).resolve()
-    return path.is_relative_to(ROOT) and '..' not in Path(rel).parts and path.is_file()
+    return (path.is_relative_to(ROOT) and '..' not in Path(rel).parts and not (ROOT / rel).is_symlink()
+            and path.is_file())
 
 DEFAULT_CREDENTIALS = ('none', 'synthetic')  # no authorized/live credentials path (AGENTS.md); adding one is a maintainer decision
 
@@ -129,9 +130,12 @@ def common(item, ev):
         errs.append('raw_results.url 必须是 https 链接')
     return errs
 
-# Everything that can affect the built app: all tracked files except docs, evidence, tests, CI and markdown.
+# Everything that can affect the built app or the evidence runners: all tracked files except docs, evidence, the
+# gate evaluator, CI and markdown.
 # (git pathspec, so new source files, resources or a Network Extension target are covered automatically)
-PRODUCT_FILES = ['.', ':(exclude)docs/', ':(exclude)evidence/', ':(exclude)tests/', ':(exclude).github/',
+# tests/ counts too (the runners that produce evidence live there), except the gate evaluator itself.
+PRODUCT_FILES = ['.', ':(exclude)docs/', ':(exclude)evidence/', ':(exclude)tests/acceptance.py',
+                 ':(exclude)tests/gate_selftest.py', ':(exclude).github/',
                  ':(exclude)*.md', ':(exclude)release-gate.json', ':(exclude).gitignore']
 
 def git(*args):
