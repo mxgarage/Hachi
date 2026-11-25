@@ -27,7 +27,8 @@ jobs:
           [ -z "$changed$gate" ] && exit 0
           why=""
           case "$HEAD_REF" in claude/*|codex/*|muse/*) why="agent branch $HEAD_REF";; esac
-          if git log --format=%B "$BASE_SHA..$HEAD_SHA" | grep -qiE '^(co-authored-by: .*(claude|codex|anthropic|openai)|claude-session:)'; then
+          msgs=$(git log --format=%B "$BASE_SHA..$HEAD_SHA")
+          if grep -qiE '^(co-authored-by: .*(claude|codex|anthropic|openai)|claude-session:)' <<<"$msgs"; then
             why="$why agent-authored commits"
           fi
           [ -z "$why" ] && exit 0

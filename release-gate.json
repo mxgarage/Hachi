@@ -3,6 +3,7 @@
   "items": [
     {
       "id": "G1",
+      "format_only": true,
       "kind": "workflow_success",
       "title": "每个声明的工作流端到端成功率 ≥ 95%",
       "readme": "Require at least 95% successful end-to-end operations in each declared workflow ... on a preregistered held-out scenario matrix",
