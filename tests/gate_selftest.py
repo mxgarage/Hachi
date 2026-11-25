@@ -50,6 +50,7 @@ bad = [
     ('G1', lambda e: e['workflows']['cli'].update(by_scenario=dict(easy=dict(attempts=399, successes=395),
                                                                 rare=dict(attempts=1, successes=1)))),  # 1-run slice
     ('G1', lambda e: e['workflows']['cli'].pop('by_environment')),
+    ('G1', lambda e: e['workflows']['cli']['by_environment'].update({'macOS 14 x86_64': dict(attempts=0, successes=0)})),  # unlisted env
     ('G1', lambda e: e.update(environments=['macOS 15 arm64', 'macOS 14 x86_64'])),  # listed env without data
     ('G1', lambda e: e['workflows']['cli']['by_scenario']['easy'].update(attempts=150)),  # does not add up
     ('G5', lambda e: e.update(feasibility_document='docs/roundtable.md')),  # no "## Unavailable" section

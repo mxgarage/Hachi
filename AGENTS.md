@@ -23,7 +23,7 @@
 - 不用真实 Claude/Codex/其他平台账号做故障实验。
 
 ## 验收证据
-- `evidence/` 下的证据只能来自真实的实验运行和独立观察器，由维护者提交。代理可以写产生证据的工具和测试，但不得手写、编辑或"补齐" `evidence/` 下的文件，也不得为了让门槛通过而放宽 `release-gate.json` 或 `tests/acceptance.py` 的条件；要改条件，先在 issue 里提出，由维护者决定。这条规则同样适用于 `.github/workflows/` 和 `.github/scripts/`（例如去掉 `--require-gate`）。CI 对 `evidence/` 的改动会直接失败；对门槛定义、评估器和这些工作流的改动只会给出警告，靠维护者审阅把关。
+- `evidence/` 下的证据只能来自真实的实验运行和独立观察器，由维护者提交。代理可以写产生证据的工具和测试，但不得手写、编辑或"补齐" `evidence/` 下的文件，也不得为了让门槛通过而放宽 `release-gate.json` 或 `tests/acceptance.py` 的条件；要改条件，先在 issue 里提出，由维护者决定。这条规则同样适用于 `.github/workflows/` 和 `.github/scripts/`（例如去掉 `--require-gate`）。来自代理分支（`claude/`、`codex/`、`muse/`）或带代理署名 trailer 的提交如果改了 `evidence/`，CI 会失败，其他分支名或不带 trailer 的提交识别不出来，这只能防止无心之失；对门槛定义、评估器和这些工作流的改动只会给出警告，靠维护者审阅把关。
 
 ## 本地验证
 ```

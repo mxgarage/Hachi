@@ -55,7 +55,7 @@ def body_for(g):
     if g['met']:
         problems = ('- 证据的格式、阈值和 git 历史检查已通过。CI 无法验证实验是否真的跑过、观察器是否独立；'
                     '维护者确认后请手动关闭这条 issue。')
-    if g.get('agent_ok', True):
+    if g.get('agent_ok') is True:  # allow-list: an item without agent_ok is not handed to agents
         start = ('维护者看过后给这条 issue 打 `claude` 标签，Claude 会在新分支上实现上面的下一步并开 PR'
                  '（只能由人打标签，工作流不会自动打）。范围：Hachi 只提醒用户当前的出口位置，不帮人绕开地区限制或平台执行。')
     else:

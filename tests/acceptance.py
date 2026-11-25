@@ -243,6 +243,9 @@ def eval_workflow_success(item, ev):
             missing_env = [e for e in ev.get('environments', []) if e not in by_env]
             if missing_env:
                 errs.append(f'{name}: environments 里列出但没有数据：' + ', '.join(map(str, missing_env)))
+            extra_env = [e for e in by_env if e not in ev.get('environments', [])]
+            if extra_env:
+                errs.append(f'{name}: by_environment 里有 environments 没列出的环境：' + ', '.join(map(str, extra_env)))
         rate, low = k / n, wilson_lower(k, n)
         notes.append(f'{name}: {k}/{n} = {rate:.1%}（Wilson 95% 下界 {low:.1%}）')
         if low < item['min_rate']:
@@ -360,7 +363,7 @@ def evaluate_gate(release_commit=None):
         if not errs and item.get('format_only'):
             notes = ['仅检查了证据格式和历史一致性，内容未经验证（维护者声明）'] + notes
         results.append(dict(id=item['id'], title=item['title'], met=not errs, problems=errs, notes=notes,
-                            format_only=bool(item.get('format_only')), agent_ok=item.get('agent_ok', True),
+                            format_only=bool(item.get('format_only')), agent_ok=item.get('agent_ok') is True,
                             evidence=item['evidence'], next_step=item.get('next_step', ''), readme=item['readme']))
     return results
 
