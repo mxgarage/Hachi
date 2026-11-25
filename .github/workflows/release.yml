@@ -148,7 +148,8 @@ jobs:
           #    suffixed tag is still marked as a prerelease and not as latest. On a published release only missing
           #    files are added: a file people may already have downloaded and checked is never replaced.
           published=$(gh api "repos/$GH_REPO/releases/tags/$TAG" --jq .id 2>/dev/null || true)
-          draft=$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id" | head -1)
+          drafts=$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id")
+          draft=${drafts%%$'\n'*}  # first one; no pipe into head (SIGPIPE under pipefail)
           [[ "$published" =~ ^[0-9]+$ ]] || published=""  # 404 for no published release
           [[ "$draft" =~ ^[0-9]+$ ]] || draft=""
           if [ -n "$published" ]; then

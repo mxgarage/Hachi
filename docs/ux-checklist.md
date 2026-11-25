@@ -12,7 +12,7 @@ sign-off stale.
 
 ## Install and first launch
 
-- **UX-01** The unsigned zip from CI unpacks, and Hachi opens after allowing it in System Settings → Privacy & Security. No Dock icon and no window appear; only the menu-bar icon.
+- **UX-01** The ad-hoc signed, not notarized zip (release asset or CI artifact) unpacks, and Hachi opens after allowing it in System Settings → Privacy & Security. No Dock icon and no window appear; only the menu-bar icon.
 - **UX-02** The menu-bar icon is the dog in profile, legible in both light and dark menu bars, and lines up with neighbouring icons.
 - **UX-03** The tail wags continuously and smoothly from launch. With System Settings → Accessibility → Display → Reduce motion on, it stops at rest within a second; turning it off resumes the wag.
 - **UX-04** Hovering the icon shows the tooltip `Hachi · 观察模式（不拦截）`. VoiceOver reads the icon as `Hachi 小八`.
