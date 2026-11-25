@@ -14,6 +14,7 @@ Requirements: macOS, Apple command-line tools, and Python 3.9+.
 python3 build.py
 python3 tests/lab.py
 python3 tests/branding.py
+python3 tests/acceptance.py   # all of the above + gate report in build/acceptance/
 open 'build/Hachi.app'
 ```
 
@@ -27,6 +28,8 @@ The test harness starts a real HTTP observer on loopback. It never runs an offic
 - Transfer evidence: exercise the same final OS enforcement mechanism across fixture clients and real signed client binaries in isolated homes. First validate process/signature identity and helpers by credential-free runs; only include official supported test endpoints or dedicated explicitly authorized test credentials if independently available. Match transport, process ownership, redirects and DNS behavior, and document gaps. Fixtures cannot establish vendor authentication UX, compatibility of unobserved flows, account eligibility, or provider enforcement outcomes. Do not claim those are validated or release an unverified surface as covered.
 - Key blocker: signed Network Extension feasibility and independent test of behavior when extensions are unavailable. No launch-time status or synthetic canary substitutes for a data-plane test.
 
+Automated checking: the gate is kept in machine-readable form in [`release-gate.json`](release-gate.json) and evaluated by `tests/acceptance.py` on every CI run from evidence under [`evidence/`](evidence/README.md); missing evidence is not met, the 95% rate is judged on its Wilson lower bound (at least 73 all-successful runs per workflow), and CI checks format, thresholds and git history only, not that the runs really happened (details and limits in [`evidence/README.md`](evidence/README.md)). The `Acceptance backlog` workflow is designed to keep one `acceptance` issue per item (its issue sync is not covered by automated tests): open while unmet, marked when the format check passes so the maintainer can close it, and reopened if the item regresses. `release.yml` is written so that a stable tag (`v0.2`) at the head of `main` releases only when every item is met, and a suffixed tag (`v0.2-dev.1`) publishes a prerelease marked as not meeting the gate; both still require the baseline checks to pass. Because this private repository's plan has no environment approvals, a tag currently produces a draft release that the maintainer publishes by hand. This path has not yet been exercised with a real tag. The G2/G3 lab cases do not have runners yet: CI runs the existing loopback lab, not the gate's cases, so those items are judged only from committed evidence. "Met" here means the maintainer's evidence claim passed the format and history checks; it is not independent verification that the runs happened.
+
 Scope: compliant network reliability only, not altering provider account eligibility or bypassing platform enforcement. No private IP/config, account tokens, device paths, or live test credentials belong in the repo.
 
-Contributing: all changes go through pull requests, including the maintainer's own; merges are manual. See [AGENTS.md](AGENTS.md) for the merge gate and what runs automatically (CI, Codex and Claude PR review, and Claude implementation for issues labeled `claude`).
+Contributing: all changes go through pull requests, including the maintainer's own; merges are manual. See [AGENTS.md](AGENTS.md) for the merge gate and what runs automatically (CI and acceptance, Codex and Claude PR review, and Claude implementation for issues labeled `claude` or comments starting with `@claude`).

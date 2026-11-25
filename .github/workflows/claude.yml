@@ -60,4 +60,4 @@ jobs:
           additional_permissions: |
             actions: read
           claude_args: |
-            --append-system-prompt "Follow AGENTS.md. Work on a new branch and open a PR; never push to main, merge, or change repository settings. Hachi only reports the current egress location; refuse work that helps bypass regional restrictions or platform enforcement. Reply in Chinese."
+            --append-system-prompt "Follow AGENTS.md. Work on a new branch and open a PR; never push to main, merge, or change repository settings. Hachi only reports the current egress location; refuse work that helps bypass regional restrictions or platform enforcement. Never create or push git tags (pushing a v* tag publishes a release). Never create or edit files under evidence/ and never loosen release-gate.json or tests/acceptance.py to make the gate pass; build the tooling that produces evidence instead. Reply in Chinese."

@@ -1,0 +1,119 @@
+name: Release
+# 只由维护者推 tag 触发；代理不打 tag、不发布（AGENTS.md）。
+# tag 格式：v<CFBundleShortVersionString>，例如 v0.2；tag 指向的提交必须已经在 main 上（即走过 PR）。
+#   带后缀（v0.2-dev.1、v0.3-rc.1）→ 预发布，标明“未通过发布门槛”，发布门槛不满足也能发。
+#   不带后缀（v0.2）→ 正式发布，必须 `tests/acceptance.py --require-gate --release-commit <tag 提交>` 通过：
+#   每份证据的 tested_commit 是 tag 提交的祖先，且之后产品代码没改过。否则失败、不发布。
+# 产物为 ad-hoc 签名（未经 Apple 公证）的 Hachi.app zip，附 SHA-256 和验收报告。
+# 构建 job 只读；只有最后的发布 job 有写权限，且不运行仓库里的代码。
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    # 推 tag 就等于发布。只接受维护者账号推的 tag；Claude GitHub App（claude[bot]）等其他主体推的 tag 直接跳过。
+    # 注意：代理如果用维护者账号操作，这里区分不出来，仍然靠约定（AGENTS.md）。
+    if: github.actor == 'daniel-to-the-moon'
+    runs-on: macos-15
+    timeout-minutes: 20
+    outputs:
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Tag is on main and matches app version
+        id: tag
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::tag $GITHUB_REF_NAME points to a commit that is not on main; merge through a PR first"; exit 1
+          fi
+          tag="${GITHUB_REF_NAME}"
+          version=$(python3 -c "import re;print(re.search(r\"CFBundleShortVersionString='([^']+)'\", open('build.py').read()).group(1))")
+          base="${tag#v}"; base="${base%%-*}"
+          if [ "$base" != "$version" ]; then
+            echo "::error::tag $tag does not match CFBundleShortVersionString $version"; exit 1
+          fi
+          if [ "$tag" = "v$version" ]; then
+            # a stable release must be cut from the current main, not an older commit on its history
+            if [ "$GITHUB_SHA" != "$(git rev-parse origin/main)" ]; then
+              echo "::error::stable tag $tag must point to the current origin/main"; exit 1
+            fi
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Acceptance (stable release requires the full gate)
+        run: |
+          if [ "${{ steps.tag.outputs.prerelease }}" = "true" ]; then
+            python3 tests/acceptance.py
+          else
+            python3 tests/acceptance.py --require-gate --release-commit "$GITHUB_SHA"
+          fi
+      - name: Sign (ad-hoc) and package
+        run: |
+          codesign --force --deep --sign - build/Hachi.app
+          codesign --verify --deep --strict build/Hachi.app
+          mkdir -p dist
+          zip="dist/Hachi-${GITHUB_REF_NAME}-macos.zip"
+          ditto -c -k --keepParent build/Hachi.app "$zip"
+          (cd dist && shasum -a 256 "$(basename "$zip")" > "$(basename "$zip").sha256")
+          {
+            if [ "${{ steps.tag.outputs.prerelease }}" = "true" ]; then
+              met=$(python3 -c "import json;g=json.load(open('build/acceptance/report.json'))['gate'];print(f\"{sum(x['met'] for x in g)}/{len(g)}\")")
+              echo "> **开发预发布。** 本次评估发布门槛满足 ${met} 项；预发布不要求门槛，只用于试用和测试。"
+              echo
+            else
+              echo "> 发布门槛的\"满足\"是维护者提交的证据通过了格式、阈值和 git 历史检查，不是 CI 对实验结果的独立验证（见 evidence/README.md）。"
+              echo
+            fi
+            echo "ad-hoc 签名，未经 Apple 公证：首次打开需在 Finder 里右键 → 打开。Hachi 只提醒当前的网络出口位置，不改变平台账号资格，也不帮人绕开地区限制。"
+            echo
+            cat build/acceptance/report.md
+          } > dist/release-notes.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-dist
+          path: dist/
+          retention-days: 7
+  publish:
+    needs: build
+    # 维护者决定（2026-11-25）：推 tag 自动发布，但要审批。审批靠 Settings → Environments → release 的
+    # required reviewers。失败时关闭：如果读不到这个审批规则（没配，或这个套餐用不了），只建 draft release，
+    # 由维护者在 Releases 页面手动发布。
+    environment: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: read  # read the release environment's protection rules
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-dist
+          path: dist
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: |
+          flags=()
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          # Fail closed: publish directly only if this environment really has required reviewers (so a person
+          # approved this job). Otherwise, or if the rules cannot be read, create a draft for the maintainer.
+          reviewers=$(gh api "repos/$GH_REPO/environments/release" \
+            --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length' 2>/dev/null || echo 0)
+          if [ "${reviewers:-0}" -lt 1 ]; then
+            flags+=(--draft)
+            echo "::warning::release environment has no required reviewers (or they could not be read); created a draft release. Publish it by hand from the Releases page."
+          fi
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "Hachi $GITHUB_REF_NAME" \
+            --notes-file dist/release-notes.md "${flags[@]}" \
+            dist/Hachi-*-macos.zip dist/Hachi-*-macos.zip.sha256

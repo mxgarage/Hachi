@@ -5,9 +5,56 @@ permissions:
 jobs:
   loopback:
     runs-on: macos-15
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - run: python3 build.py
-      - run: python3 tests/lab.py
-      - run: python3 tests/branding.py
+        with:
+          fetch-depth: 0  # gate evidence is checked against git history
+      # evidence/ is maintainer-only (AGENTS.md). Agent branches or agent-authored commits that touch it fail.
+      # Changes to the gate definition or automation (release-gate.json, tests/acceptance.py, tests/gate_selftest.py,
+      # .github/workflows/, .github/scripts/) by
+      # agents are flagged as a warning in the job summary for the maintainer to review (they may legitimately
+      # change, e.g. this tooling's own PRs). Runs on pull_request only; direct pushes are not covered.
+      # This catches honest mistakes; it cannot stop someone who rewrites branch names and trailers.
+      - name: Evidence is maintainer-only
+        if: github.event_name == 'pull_request'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- evidence/ ':(exclude)evidence/README.md')
+          gate=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- release-gate.json tests/acceptance.py tests/gate_selftest.py .github/workflows/ .github/scripts/ AGENTS.md evidence/README.md)
+          [ -z "$changed$gate" ] && exit 0
+          why=""
+          case "$HEAD_REF" in claude/*|codex/*|muse/*) why="agent branch $HEAD_REF";; esac
+          msgs=$(git log --format=%B "$BASE_SHA..$HEAD_SHA")
+          if grep -qiE '^(co-authored-by: .*(claude|codex|anthropic|openai)|claude-session:)' <<<"$msgs"; then
+            why="$why agent-authored commits"
+          fi
+          [ -z "$why" ] && exit 0
+          if [ -n "$gate" ]; then
+            echo "::warning::gate definition changed by ($why); maintainer must check it does not loosen the gate: $(echo $gate)"
+            { echo "### ⚠️ 门槛定义被代理改动，合并前请确认没有放宽条件"; echo "$gate" | sed 's/^/- /'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -n "$changed" ]; then
+            echo "::error::evidence/ changed by ($why). Only the maintainer commits evidence (AGENTS.md):"; echo "$changed"; exit 1
+          fi
+      # Builds, runs tests/lab.py and tests/branding.py, self-tests the gate, checks repo hygiene,
+      # and evaluates the release gate (reported in the job summary; not met is expected for now).
+      - run: python3 tests/acceptance.py
+      - name: Package app
+        if: always()
+        run: |
+          if [ -d build/Hachi.app ]; then
+            ditto -c -k --keepParent build/Hachi.app build/Hachi-${GITHUB_SHA::7}-unsigned.zip
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hachi-${{ github.sha }}
+          path: |
+            build/Hachi-*-unsigned.zip
+            build/acceptance/
+          if-no-files-found: warn
+          retention-days: 14

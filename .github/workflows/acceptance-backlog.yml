@@ -1,0 +1,30 @@
+name: Acceptance backlog
+# 自迭代闭环：每次推到 main 以及每周评估发布门槛，
+# 给每个未满足项保持一条 `acceptance` issue；格式检查通过后在 issue 里注明，由维护者手动关闭，
+# 之后再次不满足（如证据过期）会重新打开。
+# 它不打 `claude` 标签：要不要让 Claude 开始实现，由维护者在 issue 上打标签决定。
+on:
+  schedule:
+    - cron: '17 1 * * 1'
+  workflow_dispatch:
+  push:
+    # every push to main: a product change makes evidence stale, so the issue should reopen right away
+    branches: [main]
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: acceptance-backlog
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python3 tests/acceptance.py --gate-only
+      - run: python3 .github/scripts/sync_acceptance_issues.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
