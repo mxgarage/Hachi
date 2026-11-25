@@ -11,7 +11,7 @@
    - `Account-free macOS verification`（`verify.yml`）在当前 head 上通过；
    - 至少一份非作者本人的评审（人，或另一个 AI 评审者）已看过当前 head，提出的阻塞意见已解决；
    - 不是 Draft。
-4. **合并只由维护者（daniel-to-the-moon）手动操作。** AI 代理可以开 PR、改自己的 PR、回复评审，但不合并、不发布、不改仓库设置和密钥。
+4. **合并只由维护者（daniel-to-the-moon）手动操作，用 merge commit（不用 squash 或 rebase）**，否则证据里记录的 `tested_commit` 会从 main 的历史里消失，证据永远过不了检查。 AI 代理可以开 PR、改自己的 PR、回复评审，但不合并、不发布、不改仓库设置和密钥。
 5. 同一个 issue 同一时间只有一个代理在实现；接手前在 issue 里说明。
 
 ## 自动化边界

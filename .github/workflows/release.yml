@@ -69,6 +69,9 @@ jobs:
               met=$(python3 -c "import json;g=json.load(open('build/acceptance/report.json'))['gate'];print(f\"{sum(x['met'] for x in g)}/{len(g)}\")")
               echo "> **开发预发布。** 本次评估发布门槛满足 ${met} 项；预发布不要求门槛，只用于试用和测试。"
               echo
+            else
+              echo "> 发布门槛的\"满足\"是维护者提交的证据通过了格式、阈值和 git 历史检查，不是 CI 对实验结果的独立验证（见 evidence/README.md）。"
+              echo
             fi
             echo "ad-hoc 签名，未经 Apple 公证：首次打开需在 Finder 里右键 → 打开。Hachi 只提醒当前的网络出口位置，不改变平台账号资格，也不帮人绕开地区限制。"
             echo
