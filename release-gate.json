@@ -89,6 +89,22 @@
       "evidence": "evidence/G5-network-extension.json",
       "next_step": "写一份可行性文档：需要的签名和 entitlement、没有开发者账号时能做到哪一步、扩展不可用时应用应该怎样提醒用户。需要真实签名的部分由维护者完成。范围：只在本地合成夹具和隔离网络上做，只用合成账号，不针对任何真实平台的地区或账号检测，不帮人绕开地区限制或平台执行。",
       "agent_ok": true
+    },
+    {
+      "id": "G6",
+      "format_only": true,
+      "kind": "ux_signoff",
+      "title": "体验验收：菜单和提醒的每个状态有截图，交互清单逐项通过，维护者签字",
+      "readme": "UX acceptance: CI renders every menu-bar, menu and alert state in light and dark appearance, and the maintainer walks through the interaction checklist in docs/ux-checklist.md on the released commit and signs off.",
+      "evidence": "evidence/G6-ux-signoff.json",
+      "checklist": "docs/ux-checklist.md",
+      "appearances": [
+        "light",
+        "dark"
+      ],
+      "next_step": "维护者：从这次提交的 CI 产物（hachi-<sha> 里的 acceptance/ux/index.html）看截图，在真机上按 docs/ux-checklist.md 逐项走一遍，把结果写进 evidence/G6-ux-signoff.json。走查中发现的问题单独开 issue，那些 issue 可以打 `claude` 标签交给 Claude 修。",
+      "agent_ok": false,
+      "agent_note": "**签字只能由维护者完成。** 这一项是维护者本人在真机上的体验走查和签字，代理不能代做，也不要给这条 issue 打 `claude` 标签。走查发现的具体问题请另开 issue，那些可以交给 Claude。"
     }
   ]
 }

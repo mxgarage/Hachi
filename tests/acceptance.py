@@ -1,6 +1,6 @@
 """Automated acceptance: baseline checks + release-gate evaluation.
 
-Baseline (must pass on every PR): build, loopback lab, branding, gate self-test, repo hygiene,
+Baseline (must pass on every PR): build, loopback lab, branding, UX screenshots, gate self-test, repo hygiene,
 README gate heading consistent with the evaluated gate.
 Release gate (release-gate.json): each item is evaluated from evidence/ files.
 Missing or malformed evidence is reported as not met, never as a pass.
@@ -362,8 +362,60 @@ def eval_network_extension(item, ev):
         errs.append('feasibility_document 里需要 "## Unavailable" 或 "## 扩展不可用" 章节')
     return errs, []
 
+CHECK_ID = re.compile(r'^- \*\*(UX-\d{2})\*\*', re.M)
+RUN_URL = re.compile(r'^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/actions/runs/\d+$')
+DATE = re.compile(r'^\d{4}-\d{2}-\d{2}')
+
+def checklist_ids(path):
+    return CHECK_ID.findall((ROOT / path).read_text(encoding='utf-8'))
+
+def eval_ux_signoff(item, ev):
+    """The maintainer's own walkthrough of docs/ux-checklist.md, with CI screenshots of the same commit."""
+    errs = []
+    doc = item['checklist']
+    ids = checklist_ids(doc) if repo_file(doc, ('docs/',)) else []
+    if not ids:
+        errs.append(f'{doc} 里没有清单项（- **UX-nn**）')
+    checks = ev.get('checks')
+    if not isinstance(checks, dict):
+        checks = {}
+        errs.append('checks 必须是 {清单 ID: {result, note}}')
+    missing = [i for i in ids if i not in checks]
+    if missing:
+        errs.append('清单项没有结果：' + ', '.join(missing))
+    failed = [i for i in ids if i in checks and not (isinstance(checks[i], dict) and checks[i].get('result') == 'pass')]
+    if failed:
+        errs.append('清单项未通过：' + ', '.join(failed))
+    unknown = [i for i in checks if i not in ids]
+    if unknown:
+        errs.append('清单里没有这些 ID（清单改过？）：' + ', '.join(map(str, unknown)))
+    looks = ev.get('appearances')
+    if not isinstance(looks, list) or not set(item.get('appearances', [])) <= set(looks):
+        errs.append('appearances 必须包含 ' + ' / '.join(item.get('appearances', [])))
+    if not RUN_URL.match(str(ev.get('screenshots_run', ''))):
+        errs.append('screenshots_run 必须是这次 tested_commit 的 CI 运行链接（https://github.com/<owner>/<repo>/actions/runs/<id>）')
+    who = ev.get('signed_off_by')
+    if not isinstance(who, str) or not who.strip():
+        errs.append('signed_off_by 必须写明签字的维护者')
+    if not DATE.match(str(ev.get('signed_off_at', ''))):
+        errs.append('signed_off_at 必须是日期（YYYY-MM-DD）')
+    # docs/ is not a product file, so the checklist's own history is checked here: it must have existed at
+    # tested_commit and be unchanged since, otherwise the walkthrough was against a different list.
+    commit = str(ev.get('tested_commit', ''))
+    if SHA.match(commit) and git('cat-file', '-e', f'{commit}^{{commit}}').returncode == 0:
+        target = RELEASE_COMMIT or 'HEAD'
+        if git('cat-file', '-e', f'{commit}:{doc}').returncode != 0:
+            errs.append(f'{doc} 在 tested_commit 时还不存在')
+        elif git('diff', '--quiet', commit, target, '--', doc).returncode != 0:
+            errs.append(f'{doc} 在 tested_commit 之后被改过，需要按新清单重新走查')
+    notes = [f'{len(ids) - len(missing) - len(failed)}/{len(ids)} 个清单项通过']
+    if isinstance(who, str) and who.strip():
+        notes.append(f'签字：{who.strip()} {ev.get("signed_off_at", "")}')
+    return errs, notes
+
 EVALUATORS = dict(workflow_success=eval_workflow_success, critical_failures=eval_critical_failures,
-                  lab_cases=eval_lab_cases, transfer=eval_transfer, network_extension=eval_network_extension)
+                  lab_cases=eval_lab_cases, transfer=eval_transfer, network_extension=eval_network_extension,
+                  ux_signoff=eval_ux_signoff)
 
 MANIFEST = json.loads((ROOT / 'release-gate.json').read_text(encoding='utf-8'))
 
@@ -386,6 +438,7 @@ def evaluate_gate(release_commit=None):
             notes = ['仅检查了证据格式和历史一致性，内容未经验证（维护者声明）'] + notes
         results.append(dict(id=item['id'], title=item['title'], met=not errs, problems=errs, notes=notes,
                             format_only=bool(item.get('format_only')), agent_ok=item.get('agent_ok') is True,
+                            agent_note=item.get('agent_note', ''),
                             evidence=item['evidence'], next_step=item.get('next_step', ''), readme=item['readme']))
     return results
 
@@ -421,6 +474,7 @@ def main():
         if baseline[-1]['ok']:
             baseline.append(run_step('loopback lab (tests/lab.py)', [py, 'tests/lab.py']))
             baseline.append(run_step('branding (tests/branding.py)', [py, 'tests/branding.py']))
+            baseline.append(run_step('UX screenshots (tests/ux_screens.py)', [py, 'tests/ux_screens.py']))
         baseline.append(run_step('gate evaluator self-test (tests/gate_selftest.py)', [py, 'tests/gate_selftest.py']))
         baseline.append(hygiene())
     gate = evaluate_gate(args.release_commit)
