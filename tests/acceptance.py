@@ -141,8 +141,9 @@ def common(item, ev):
     errs = []
     if not SHA.match(str(ev.get('tested_commit', ''))):
         errs.append('tested_commit 必须是 40 位提交哈希')
-    if not ev.get('environments'):
-        errs.append('environments 为空（需写明 OS/架构）')
+    envs = ev.get('environments')
+    if not isinstance(envs, list) or not envs or not all(isinstance(e, str) and e.strip() for e in envs):
+        errs.append('environments 必须是非空的字符串列表（写明 OS/架构）')
     allowed = tuple(item.get('allowed_credentials', DEFAULT_CREDENTIALS))
     if ev.get('credentials') not in allowed:
         errs.append(f'credentials 必须是 {" / ".join(allowed)}（不能用真实平台账号）')
@@ -221,9 +222,12 @@ def eval_workflow_success(item, ev):
         if n is None or k is None or k > n:
             errs.append(f'{name}: attempts/successes 必须是非负整数且 successes ≤ attempts')
             continue
-        for field, label in (('seeds', '种子'), ('timing', '耗时')):
-            if not w.get(field):
-                errs.append(f'{name}: 没记录{label}（{field}）')
+        seeds, timing = w.get('seeds'), w.get('timing')
+        if not isinstance(seeds, list) or not seeds or not all(count(s) is not None for s in seeds):
+            errs.append(f'{name}: seeds 必须是非空的非负整数列表（种子）')
+        if not isinstance(timing, dict) or not timing or not all(
+                isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0 for v in timing.values()):
+            errs.append(f'{name}: timing 必须是非空的 {{名称: 秒数}}（耗时）')
         if n < item['min_attempts']:
             errs.append(f'{name}: 次数 {n} < {item["min_attempts"]}')
         # No pooling: per-scenario and per-environment breakdowns must add up to the totals, every slice needs at
@@ -248,10 +252,11 @@ def eval_workflow_success(item, ev):
                 errs.append(f'{name}: {split} 中低于 {item["min_rate"]:.0%} 的部分：' + ', '.join(weak))
         by_env = w.get('by_environment')
         if isinstance(by_env, dict):
-            missing_env = [e for e in ev.get('environments', []) if e not in by_env]
+            listed = ev['environments'] if isinstance(ev.get('environments'), list) else []
+            missing_env = [e for e in listed if e not in by_env]
             if missing_env:
                 errs.append(f'{name}: environments 里列出但没有数据：' + ', '.join(map(str, missing_env)))
-            extra_env = [e for e in by_env if e not in ev.get('environments', [])]
+            extra_env = [e for e in by_env if e not in listed]
             if extra_env:
                 errs.append(f'{name}: by_environment 里有 environments 没列出的环境：' + ', '.join(map(str, extra_env)))
         rate, low = k / n, wilson_lower(k, n)
