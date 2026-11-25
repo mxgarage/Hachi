@@ -41,6 +41,8 @@ def gh(method, path, body=None):
             return None
         raise
 
+MET_MARK = '<!-- hachi-gate-met -->'
+
 def norm(text):
     return '\n'.join(line.rstrip() for line in (text or '').replace('\r\n', '\n').strip().splitlines())
 
@@ -52,8 +54,8 @@ def body_for(g):
     if g['met']:
         problems = ('- 证据的格式、阈值和 git 历史检查已通过。CI 无法验证实验是否真的跑过、观察器是否独立；'
                     '维护者确认后请手动关闭这条 issue。')
-    return f"""{marker(g['id'])}
-由 `acceptance-backlog` 工作流自动维护，内容会随每次验收刷新。门槛满足后这条 issue 会自动关闭。
+    return f"""{marker(g['id'])}{MET_MARK if g['met'] else ''}
+由 `acceptance-backlog` 工作流自动维护，内容会随每次验收刷新。格式检查通过后这里会注明，由维护者确认后手动关闭；关闭后如果这一项又变成未满足（例如证据过期），会自动重新打开。
 
 ## 验收条件
 {g['title']}
@@ -91,8 +93,10 @@ def main():
         if issue and issue['state'] == 'closed' and not g['met']:
             # Reopen only what this workflow itself closed (the item regressed). A person's close, for any
             # reason, is respected; the summary says how to resume reminders.
+            # Exception: an issue the maintainer closed after it was met (body carries MET_MARK) is reopened when
+            # the item regresses, e.g. evidence went stale after a product change.
             closer = ((gh('GET', f'/repos/{REPO}/issues/{issue["number"]}') or {}).get('closed_by') or {}).get('login')
-            if closer != BOT:
+            if closer != BOT and MET_MARK not in (issue.get('body') or ''):
                 msg = (f'{g["id"]}: 未满足，但 {closer or "维护者"} 已手动关闭 #{issue["number"]}'
                        f'（{issue.get("state_reason") or "closed"}），不再提醒；要恢复提醒就重新打开它')
                 print(msg)
