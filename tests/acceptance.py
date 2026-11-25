@@ -218,9 +218,10 @@ def eval_workflow_success(item, ev):
                 errs.append(f'{name}: 没记录{label}（{field}）')
         if n < item['min_attempts']:
             errs.append(f'{name}: 次数 {n} < {item["min_attempts"]}')
-            continue
-        # No pooling: per-scenario and per-environment breakdowns must add up to the totals, and no slice may
-        # fall below min_rate on its own point estimate (README: do not pool easy scenarios to hide a failure).
+        # No pooling: per-scenario and per-environment breakdowns must add up to the totals, every slice needs at
+        # least min_slice_attempts runs, and no slice may fall below min_rate on its own point estimate
+        # (README: do not pool easy scenarios to hide a failure).
+        min_slice = item.get('min_slice_attempts', 1)
         for split in ('by_scenario', 'by_environment'):
             parts = w.get(split)
             if not isinstance(parts, dict) or not parts:
@@ -231,11 +232,15 @@ def eval_workflow_success(item, ev):
             if None in pn or None in pk or sum(pn) != n or sum(pk) != k or any(b > a for a, b in zip(pn, pk)):
                 errs.append(f'{name}: {split} 的计数必须是整数且加起来等于总数')
                 continue
-            weak = [s for s, a, b in zip(parts, pn, pk) if a == 0 or b / a < item['min_rate']]
+            small = [s for s, a in zip(parts, pn) if a < min_slice]
+            if small:
+                errs.append(f'{name}: {split} 中次数少于 {min_slice} 的部分：' + ', '.join(small))
+            weak = [s for s, a, b in zip(parts, pn, pk) if a and b / a < item['min_rate']]
             if weak:
                 errs.append(f'{name}: {split} 中低于 {item["min_rate"]:.0%} 的部分：' + ', '.join(weak))
-        if split == 'by_environment' and isinstance(w.get('by_environment'), dict):
-            missing_env = [e for e in ev.get('environments', []) if e not in w['by_environment']]
+        by_env = w.get('by_environment')
+        if isinstance(by_env, dict):
+            missing_env = [e for e in ev.get('environments', []) if e not in by_env]
             if missing_env:
                 errs.append(f'{name}: environments 里列出但没有数据：' + ', '.join(map(str, missing_env)))
         rate, low = k / n, wilson_lower(k, n)

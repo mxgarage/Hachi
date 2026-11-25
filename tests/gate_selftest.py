@@ -47,6 +47,8 @@ bad = [
         attempts=2000, successes=1960, by_scenario=dict(easy=dict(attempts=1800, successes=1800),
                                                        hard=dict(attempts=200, successes=160)),
         by_environment={'macOS 15 arm64': dict(attempts=2000, successes=1960)})),  # total 98%, hard scenario 80%
+    ('G1', lambda e: e['workflows']['cli'].update(by_scenario=dict(easy=dict(attempts=399, successes=395),
+                                                                rare=dict(attempts=1, successes=1)))),  # 1-run slice
     ('G1', lambda e: e['workflows']['cli'].pop('by_environment')),
     ('G1', lambda e: e.update(environments=['macOS 15 arm64', 'macOS 14 x86_64'])),  # listed env without data
     ('G1', lambda e: e['workflows']['cli']['by_scenario']['easy'].update(attempts=150)),  # does not add up
@@ -159,6 +161,7 @@ with tempfile.TemporaryDirectory() as tmp:
 # missing, malformed and wrongly typed evidence is "not met", never a crash.
 import shutil
 with tempfile.TemporaryDirectory() as tmp:
+    tmp = str(Path(tmp).resolve())  # macOS: /var -> /private/var; repo_file rejects paths that resolve elsewhere
     for rel in (RAW, GAPS, 'tests/lab.py'):
         Path(tmp, rel).parent.mkdir(parents=True, exist_ok=True); shutil.copy(A.ROOT / rel, Path(tmp, rel))
     def write(item_id, text):
