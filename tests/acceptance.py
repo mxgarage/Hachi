@@ -261,9 +261,11 @@ def eval_critical_failures(item, ev):
     obs = ev.get('observer', {})
     if obs.get('independent') is not True:
         errs.append('observer.independent 必须为 true（应用日志不算）')
-    # Zero critical failures must hold in every fault-injection scenario of G3, each with enough traffic.
+    # Zero critical failures must hold in every G3 scenario (normal flows and fault injection), each with enough
+    # traffic; only MCP cases waived by met G1 evidence are skipped.
     lab = next(i for i in MANIFEST['items'] if i['kind'] == 'lab_cases')
-    required = [c for c in lab['cases'] if c.startswith('inject_')]
+    waived = unsupported_workflows()
+    required = [c for c in lab['cases'] if lab.get('optional_cases', {}).get(c) not in waived]
     scenarios = ev.get('scenarios', {})
     if not isinstance(scenarios, dict):
         scenarios = {}
@@ -282,7 +284,7 @@ def eval_critical_failures(item, ev):
         for key in ('direct_or_wrong_route_egress', 'control_interruptions', 'control_route_changes'):
             if count(s.get(key)) != 0:
                 errs.append(f'{name}: {key} = {s.get(key)!r}（必须是整数 0）')
-    return errs, [f'观察器：{obs.get("kind", "?")}；{len(required) - len(missing)}/{len(required)} 个故障场景有数据']
+    return errs, [f'观察器：{obs.get("kind", "?")}；{len(required) - len(missing)}/{len(required)} 个场景有数据']
 
 def unsupported_workflows():
     """Workflows that G1 evidence marks unsupported (only optional ones count, see eval_workflow_success).

@@ -33,6 +33,7 @@
       "readme": "zero observed direct or wrong-route egress for protected flows ... Verify at an independent network observer; app logs alone do not count.",
       "evidence": "evidence/G2-critical-failures.json",
       "min_flows_per_scenario": 20,
+      "scenarios_basis": "every G3 case, normal and inject_*; MCP cases only skipped when met G1 evidence marks MCP unsupported",
       "next_step": "做一个独立于 Hachi 进程的网络观察器（例如在隔离网关或独立 VM 上抓包统计），让故障矩阵的结果由观察器而不是应用日志给出。",
       "agent_ok": true
     },

@@ -27,7 +27,7 @@ good = {
                 by_environment={'macOS 15 arm64': dict(attempts=400, successes=396)}) for w in items['G1']['workflows']}),
     'G2': dict(base, observer=dict(independent=True, kind='gateway pcap'), scenarios={
         c: dict(protected_flows=50, control_workloads=10, direct_or_wrong_route_egress=0, control_interruptions=0,
-                control_route_changes=0) for c in items['G3']['cases'] if c.startswith('inject_')}),
+                control_route_changes=0) for c in items['G3']['cases']}),
     'G3': dict(base, cases={c: dict(result='pass') for c in items['G3']['cases']}),
     'G4': dict(base, fixture_clients=['fixture'], signed_clients=['client'], same_enforcement_mechanism=True,
                gaps_document=GAPS),
@@ -73,6 +73,7 @@ bad = [
     ('G4', lambda e: e.update(gaps_document='/etc/hosts')),
     ('G2', lambda e: e['scenarios']['inject_sleep_wake'].update(direct_or_wrong_route_egress=1)),
     ('G2', lambda e: e['scenarios'].pop('inject_route_change')),
+    ('G2', lambda e: e['scenarios']['dns_udp'].update(direct_or_wrong_route_egress=1)),  # normal case counts too
     ('G2', lambda e: e['scenarios']['inject_update'].update(protected_flows=1)),
     ('G2', lambda e: e['scenarios']['inject_update'].update(control_workloads=0)),
     ('G2', lambda e: e['observer'].update(independent=False)),
