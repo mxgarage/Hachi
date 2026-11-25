@@ -54,6 +54,13 @@ def body_for(g):
     if g['met']:
         problems = ('- 证据的格式、阈值和 git 历史检查已通过。CI 无法验证实验是否真的跑过、观察器是否独立；'
                     '维护者确认后请手动关闭这条 issue。')
+    if g.get('agent_ok', True):
+        start = ('维护者看过后给这条 issue 打 `claude` 标签，Claude 会在新分支上实现上面的下一步并开 PR'
+                 '（只能由人打标签，工作流不会自动打）。范围：Hachi 只提醒用户当前的出口位置，不帮人绕开地区限制或平台执行。')
+    else:
+        start = ('**暂不交给代理。** 这一项涉及流量的强制路由或数据面，是否在 Hachi 的范围内（只提醒当前出口位置、'
+                 '不帮人绕开地区限制或平台执行）需要维护者先确认。确认前请不要给这条 issue 打 `claude` 标签；'
+                 '确认后由维护者修改 `release-gate.json` 里的 `agent_ok`。')
     return f"""{marker(g['id'])}{MET_MARK if g['met'] else ''}
 由 `acceptance-backlog` 工作流自动维护，内容会随每次验收刷新。格式检查通过后这里会注明，由维护者确认后手动关闭；关闭后如果这一项又变成未满足（例如证据过期），会自动重新打开。
 
@@ -72,7 +79,7 @@ def body_for(g):
 {g['next_step']}
 
 ## 怎样启动
-维护者看过后给这条 issue 打 `claude` 标签，Claude 会在新分支上实现上面的下一步并开 PR（只能由人打标签，工作流不会自动打）。范围：Hachi 只提醒用户当前的出口位置，不帮人绕开地区限制或平台执行。
+{start}
 """
 
 def main():

@@ -8,8 +8,15 @@
       "title": "每个声明的工作流端到端成功率 ≥ 95%",
       "readme": "Require at least 95% successful end-to-end operations in each declared workflow ... on a preregistered held-out scenario matrix",
       "evidence": "evidence/G1-workflow-success.json",
-      "workflows": ["desktop", "cli", "browser_authorization", "mcp"],
-      "optional_workflows": ["mcp"],
+      "workflows": [
+        "desktop",
+        "cli",
+        "browser_authorization",
+        "mcp"
+      ],
+      "optional_workflows": [
+        "mcp"
+      ],
       "min_rate": 0.95,
       "min_rate_basis": "Wilson 95% lower bound, not the point estimate",
       "min_attempts": 73,
@@ -23,7 +30,8 @@
       "readme": "zero observed direct or wrong-route egress for protected flows ... Verify at an independent network observer; app logs alone do not count.",
       "evidence": "evidence/G2-critical-failures.json",
       "min_flows_per_scenario": 20,
-      "next_step": "做一个独立于 Hachi 进程的网络观察器（例如在隔离网关或独立 VM 上抓包统计），让故障矩阵的结果由观察器而不是应用日志给出。"
+      "next_step": "做一个独立于 Hachi 进程的网络观察器（例如在隔离网关或独立 VM 上抓包统计），让故障矩阵的结果由观察器而不是应用日志给出。",
+      "agent_ok": false
     },
     {
       "id": "G3",
@@ -33,12 +41,28 @@
       "readme": "Initial lab cases: TCP/TLS streams including reconnect and token-like refresh, system/browser redirect and loopback callback, DNS IPv4/IPv6/UDP, MCP stdio child isolation and remote streaming. Inject route change, tunnel/core loss, already-open flows, sleep/wake, interface switch, update and extension disable/restart.",
       "evidence": "evidence/G3-lab-cases.json",
       "cases": [
-        "tcp_tls_reconnect", "token_like_refresh", "system_redirect", "browser_redirect", "loopback_callback",
-        "dns_ipv4", "dns_ipv6", "dns_udp", "mcp_stdio_child_isolation", "mcp_remote_streaming",
-        "inject_route_change", "inject_tunnel_core_loss", "inject_already_open_flows", "inject_sleep_wake",
-        "inject_interface_switch", "inject_update", "inject_extension_disable_restart"
+        "tcp_tls_reconnect",
+        "token_like_refresh",
+        "system_redirect",
+        "browser_redirect",
+        "loopback_callback",
+        "dns_ipv4",
+        "dns_ipv6",
+        "dns_udp",
+        "mcp_stdio_child_isolation",
+        "mcp_remote_streaming",
+        "inject_route_change",
+        "inject_tunnel_core_loss",
+        "inject_already_open_flows",
+        "inject_sleep_wake",
+        "inject_interface_switch",
+        "inject_update",
+        "inject_extension_disable_restart"
       ],
-      "optional_cases": {"mcp_stdio_child_isolation": "mcp", "mcp_remote_streaming": "mcp"},
+      "optional_cases": {
+        "mcp_stdio_child_isolation": "mcp",
+        "mcp_remote_streaming": "mcp"
+      },
       "next_step": "把 tests/lab.py 的回环夹具扩展成用例库，每个用例一个可单独运行的场景，结果写成这份证据的 JSON 格式。先做不需要 Network Extension 的用例。"
     },
     {
@@ -48,7 +72,8 @@
       "title": "迁移证据：夹具客户端和真实签名客户端走同一套系统执行机制",
       "readme": "Transfer evidence: exercise the same final OS enforcement mechanism across fixture clients and real signed client binaries in isolated homes.",
       "evidence": "evidence/G4-transfer.json",
-      "next_step": "先在隔离 home 里做无凭据运行，核对进程和签名身份、辅助进程、重定向和 DNS 行为，差距写进 docs/ 下的文档并在证据里引用。不使用任何真实平台账号。"
+      "next_step": "先在隔离 home 里做无凭据运行，核对进程和签名身份、辅助进程、重定向和 DNS 行为，差距写进 docs/ 下的文档并在证据里引用。不使用任何真实平台账号。",
+      "agent_ok": false
     },
     {
       "id": "G5",
@@ -57,7 +82,8 @@
       "title": "签名 Network Extension 可行性，以及扩展不可用时的独立测试",
       "readme": "Key blocker: signed Network Extension feasibility and independent test of behavior when extensions are unavailable.",
       "evidence": "evidence/G5-network-extension.json",
-      "next_step": "写一份可行性文档：需要的签名和 entitlement、没有开发者账号时能做到哪一步、扩展不可用时应用应该怎样提醒用户。需要真实签名的部分由维护者完成。"
+      "next_step": "写一份可行性文档：需要的签名和 entitlement、没有开发者账号时能做到哪一步、扩展不可用时应用应该怎样提醒用户。需要真实签名的部分由维护者完成。",
+      "agent_ok": false
     }
   ]
 }

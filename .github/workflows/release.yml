@@ -40,7 +40,15 @@ jobs:
           if [ "$base" != "$version" ]; then
             echo "::error::tag $tag does not match CFBundleShortVersionString $version"; exit 1
           fi
-          if [ "$tag" = "v$version" ]; then echo "prerelease=false" >> "$GITHUB_OUTPUT"; else echo "prerelease=true" >> "$GITHUB_OUTPUT"; fi
+          if [ "$tag" = "v$version" ]; then
+            # a stable release must be cut from the current main, not an older commit on its history
+            if [ "$GITHUB_SHA" != "$(git rev-parse origin/main)" ]; then
+              echo "::error::stable tag $tag must point to the current origin/main"; exit 1
+            fi
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Acceptance (stable release requires the full gate)
         run: |
           if [ "${{ steps.tag.outputs.prerelease }}" = "true" ]; then

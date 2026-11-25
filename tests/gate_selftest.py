@@ -16,26 +16,41 @@ head = A.git('rev-parse', 'HEAD').stdout.strip()
 import atexit
 RAW, GAPS = 'evidence/.selftest-raw.json', 'docs/.selftest-gaps.md'
 (A.ROOT / RAW).write_text('{"runs": []}\n', encoding='utf-8')
-(A.ROOT / GAPS).write_text('# Transfer\n\n## Gaps\n- none observed\n', encoding='utf-8')
+(A.ROOT / GAPS).write_text('# Transfer\n\n## Gaps\n- none observed\n\n## Unavailable\n- warn the user\n', encoding='utf-8')
 atexit.register(lambda: [(A.ROOT / p).unlink(missing_ok=True) for p in (RAW, GAPS)])
 base = dict(tested_commit=head, environments=['macOS 15 arm64'], credentials='synthetic', raw_results=dict(path=RAW, sha256=hashlib.sha256((A.ROOT / RAW).read_bytes()).hexdigest()))
 good = {
     'G1': dict(base, matrix_preregistered='tests/lab.py', workflows={
-        w: dict(attempts=400, successes=396, seeds=[1, 2, 3], timing=dict(median_s=4.2, p95_s=9.8)) for w in items['G1']['workflows']}),
+        w: dict(attempts=400, successes=396, seeds=[1, 2, 3], timing=dict(median_s=4.2, p95_s=9.8),
+                by_scenario=dict(easy=dict(attempts=200, successes=199), hard=dict(attempts=200, successes=197)),
+                by_environment={'macOS 15 arm64': dict(attempts=400, successes=396)}) for w in items['G1']['workflows']}),
     'G2': dict(base, observer=dict(independent=True, kind='gateway pcap'), scenarios={
         c: dict(protected_flows=50, control_workloads=10, direct_or_wrong_route_egress=0, control_interruptions=0,
                 control_route_changes=0) for c in items['G3']['cases'] if c.startswith('inject_')}),
     'G3': dict(base, cases={c: dict(result='pass') for c in items['G3']['cases']}),
     'G4': dict(base, fixture_clients=['fixture'], signed_clients=['client'], same_enforcement_mechanism=True,
                gaps_document=GAPS),
-    'G5': dict(base, signed_extension_loaded=True, data_plane_tested=True, unavailable_behavior_tested=True),
+    'G5': dict(base, signed_extension_loaded=True, data_plane_tested=True, unavailable_behavior_tested=True,
+               feasibility_document=GAPS),
 }
+def set_counts(w, n, k):
+    w.update(attempts=n, successes=k, by_scenario=dict(all=dict(attempts=n, successes=k)),
+             by_environment={'macOS 15 arm64': dict(attempts=n, successes=k)})
+
 bad = [
     ('G1', lambda e: e['workflows']['mcp'].update(successes=376)),
     ('G1', lambda e: e['workflows']['mcp'].update(attempts=60, successes=57)),  # rejected by min_attempts
     ('G1', lambda e: e['workflows']['cli'].update(attempts=60, successes=60)),  # rejected by min_attempts
-    ('G1', lambda e: e['workflows']['cli'].update(attempts=400, successes=380)),  # point 95.0% but Wilson lower bound ~92.4%
-    ('G1', lambda e: e['workflows']['cli'].update(attempts=100, successes=99)),  # point 99% but lower bound ~94.6%
+    ('G1', lambda e: set_counts(e['workflows']['cli'], 400, 380)),  # point 95.0% but Wilson lower bound ~92.4%
+    ('G1', lambda e: set_counts(e['workflows']['cli'], 100, 99)),  # point 99% but lower bound ~94.6%
+    ('G1', lambda e: e['workflows']['cli'].update(
+        attempts=2000, successes=1960, by_scenario=dict(easy=dict(attempts=1800, successes=1800),
+                                                       hard=dict(attempts=200, successes=160)),
+        by_environment={'macOS 15 arm64': dict(attempts=2000, successes=1960)})),  # total 98%, hard scenario 80%
+    ('G1', lambda e: e['workflows']['cli'].pop('by_environment')),
+    ('G1', lambda e: e.update(environments=['macOS 15 arm64', 'macOS 14 x86_64'])),  # listed env without data
+    ('G1', lambda e: e['workflows']['cli']['by_scenario']['easy'].update(attempts=150)),  # does not add up
+    ('G5', lambda e: e.update(feasibility_document='docs/roundtable.md')),  # no "## Unavailable" section
     ('G1', lambda e: e['workflows'].pop('cli')),
     ('G1', lambda e: e['workflows']['desktop'].update(attempts=10, successes=10)),
     ('G1', lambda e: e['workflows']['desktop'].update(attempts=72, successes=72)),  # rejected by min_attempts (= 73)
@@ -82,6 +97,19 @@ def problems(item_id, ev):
 for k, n in ((380, 400), (99, 100)):  # make sure these really exercise the lower bound, not min_attempts
     assert n >= items['G1']['min_attempts'] and k / n >= items['G1']['min_rate'] > A.wilson_lower(k, n)
 assert A.wilson_lower(73, 73) >= items['G1']['min_rate'] > A.wilson_lower(72, 72), 'min_attempts must be the smallest passing all-success count'
+# Hygiene: compressed IPv6 and MAC addresses are caught; documentation/loopback ranges and non-addresses are not.
+def _valid6(t):
+    try:
+        A.ipaddress.IPv6Address(t); return True
+    except ValueError:
+        return False
+def ip_hits(line):
+    return ([t for t in (m.group(0) for m in A.IPV6.finditer(line)) if _valid6(t) and not A.allowed_ip(t)]
+            + [m.group(0) for m in A.MAC.finditer(line)])
+assert ip_hits('peer 2600::1') and ip_hits('ll fe80::1') and ip_hits('mac de:ad:be:ef:00:11')
+assert not ip_hits('loop ::1 doc 2001:db8::1 std::map at 08:14:36')
+assert A.allowed_ip('198.51.100.7') and not A.allowed_ip('8.8.8.8') and not A.allowed_ip('::1a2b:3c4d')
+
 # --release-commit path (used by release.yml): HEAD as release commit passes (the failing direction is in the
 # throwaway-repository cases below).
 assert not A.provenance(good['G5'], head)

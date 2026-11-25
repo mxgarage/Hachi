@@ -50,7 +50,8 @@ IPV4 = re.compile(r'(?<![\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\d.]
 ALLOWED_NETS = [ipaddress.ip_network(n) for n in
                 ('127.0.0.0/8', '0.0.0.0/32', '192.0.2.0/24', '198.51.100.0/24', '203.0.113.0/24',
                  '::1/128', '2001:db8::/32')]
-IPV6 = re.compile(r'(?<![0-9A-Za-z:])(?:[0-9a-fA-F]{1,4}:){2,7}(?::|[0-9a-fA-F]{1,4})(?:[0-9a-fA-F:]*)(?![0-9A-Za-z:])')
+IPV6 = re.compile(r'(?<![0-9A-Za-z:])[0-9a-fA-F]{0,4}(?::[0-9a-fA-F]{0,4}){2,7}(?![0-9A-Za-z:])')
+MAC = re.compile(r'(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f:])')
 # hygiene-patterns-end
 
 def allowed_ip(text):
@@ -86,8 +87,14 @@ def hygiene():
                     problems.append(f'{path.relative_to(ROOT)}:{n} IP address {ip} (use 192.0.2.x/198.51.100.x/203.0.113.x)')
             for m in IPV6.finditer(line):
                 ip = m.group(0).lower()
-                if ip.count(':') >= 3 and re.search('[a-f]|::', ip) and not allowed_ip(ip):
+                try:
+                    ipaddress.IPv6Address(ip)  # only real addresses: std::map, 08:14:36 etc. do not parse
+                except ValueError:
+                    continue
+                if not allowed_ip(ip):
                     problems.append(f'{path.relative_to(ROOT)}:{n} IPv6 address {ip} (use 2001:db8::/32)')
+            for m in MAC.finditer(line):
+                problems.append(f'{path.relative_to(ROOT)}:{n} MAC address {m.group(0)}')
     return dict(name='repo hygiene (no keys, tokens, device paths, real IPs)', ok=not problems,
                 detail='; '.join(problems[:10]) or 'clean')
 
@@ -212,6 +219,25 @@ def eval_workflow_success(item, ev):
         if n < item['min_attempts']:
             errs.append(f'{name}: 次数 {n} < {item["min_attempts"]}')
             continue
+        # No pooling: per-scenario and per-environment breakdowns must add up to the totals, and no slice may
+        # fall below min_rate on its own point estimate (README: do not pool easy scenarios to hide a failure).
+        for split in ('by_scenario', 'by_environment'):
+            parts = w.get(split)
+            if not isinstance(parts, dict) or not parts:
+                errs.append(f'{name}: 缺少 {split} 拆分')
+                continue
+            pn = [count(p.get('attempts')) if isinstance(p, dict) else None for p in parts.values()]
+            pk = [count(p.get('successes')) if isinstance(p, dict) else None for p in parts.values()]
+            if None in pn or None in pk or sum(pn) != n or sum(pk) != k or any(b > a for a, b in zip(pn, pk)):
+                errs.append(f'{name}: {split} 的计数必须是整数且加起来等于总数')
+                continue
+            weak = [s for s, a, b in zip(parts, pn, pk) if a == 0 or b / a < item['min_rate']]
+            if weak:
+                errs.append(f'{name}: {split} 中低于 {item["min_rate"]:.0%} 的部分：' + ', '.join(weak))
+        if split == 'by_environment' and isinstance(w.get('by_environment'), dict):
+            missing_env = [e for e in ev.get('environments', []) if e not in w['by_environment']]
+            if missing_env:
+                errs.append(f'{name}: environments 里列出但没有数据：' + ', '.join(map(str, missing_env)))
         rate, low = k / n, wilson_lower(k, n)
         notes.append(f'{name}: {k}/{n} = {rate:.1%}（Wilson 95% 下界 {low:.1%}）')
         if low < item['min_rate']:
@@ -301,6 +327,11 @@ def eval_network_extension(item, ev):
     for key in ('signed_extension_loaded', 'data_plane_tested', 'unavailable_behavior_tested'):
         if ev.get(key) is not True:
             errs.append(f'{key} 必须为 true')
+    doc = ev.get('feasibility_document')
+    if not repo_file(doc, ('docs/',)):
+        errs.append('feasibility_document 必须指向 docs/ 下存在的可行性文档')
+    elif not re.search(r'^## (Unavailable|扩展不可用)', (ROOT / doc).read_text(encoding='utf-8'), re.M):
+        errs.append('feasibility_document 里需要 "## Unavailable" 或 "## 扩展不可用" 章节')
     return errs, []
 
 EVALUATORS = dict(workflow_success=eval_workflow_success, critical_failures=eval_critical_failures,
@@ -324,7 +355,7 @@ def evaluate_gate(release_commit=None):
         if not errs and item.get('format_only'):
             notes = ['仅检查了证据格式和历史一致性，内容未经验证（维护者声明）'] + notes
         results.append(dict(id=item['id'], title=item['title'], met=not errs, problems=errs, notes=notes,
-                            format_only=bool(item.get('format_only')),
+                            format_only=bool(item.get('format_only')), agent_ok=item.get('agent_ok', True),
                             evidence=item['evidence'], next_step=item.get('next_step', ''), readme=item['readme']))
     return results
 

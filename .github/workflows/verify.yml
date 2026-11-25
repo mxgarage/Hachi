@@ -11,7 +11,8 @@ jobs:
         with:
           fetch-depth: 0  # gate evidence is checked against git history
       # evidence/ is maintainer-only (AGENTS.md). Agent branches or agent-authored commits that touch it fail.
-      # Changes to the gate definition (release-gate.json, tests/acceptance.py, tests/gate_selftest.py) by
+      # Changes to the gate definition or automation (release-gate.json, tests/acceptance.py, tests/gate_selftest.py,
+      # .github/workflows/, .github/scripts/) by
       # agents are flagged as a warning in the job summary for the maintainer to review (they may legitimately
       # change, e.g. this tooling's own PRs). Runs on pull_request only; direct pushes are not covered.
       # This catches honest mistakes; it cannot stop someone who rewrites branch names and trailers.
@@ -23,7 +24,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- evidence/ ':(exclude)evidence/README.md')
-          gate=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- release-gate.json tests/acceptance.py tests/gate_selftest.py)
+          gate=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- release-gate.json tests/acceptance.py tests/gate_selftest.py .github/workflows/ .github/scripts/)
           [ -z "$changed$gate" ] && exit 0
           why=""
           case "$HEAD_REF" in claude/*|codex/*|muse/*) why="agent branch $HEAD_REF";; esac
