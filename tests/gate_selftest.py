@@ -71,7 +71,6 @@ bad = [
     ('G4', lambda e: e['raw_results'].update(sha256='0' * 64)),  # hash does not match file
     ('G4', lambda e: e.update(credentials='authorized_test')),  # no authorized-credential path
     ('G1', lambda e: e.update(matrix_preregistered='tests/not-yet-written.md')),
-    ('G1', lambda e: e.update(tested_commit='f' * 40)),
     ('G5', lambda e: e.update(data_plane_tested=False)),
     ('G5', lambda e: e.update(tested_commit='main')),
 ]
@@ -83,12 +82,9 @@ def problems(item_id, ev):
 for k, n in ((380, 400), (99, 100)):  # make sure these really exercise the lower bound, not min_attempts
     assert n >= items['G1']['min_attempts'] and k / n >= items['G1']['min_rate'] > A.wilson_lower(k, n)
 assert A.wilson_lower(73, 73) >= items['G1']['min_rate'] > A.wilson_lower(72, 72), 'min_attempts must be the smallest passing all-success count'
-# --release-commit path (used by release.yml): HEAD as release commit passes; an older release commit,
-# of which tested_commit=HEAD is not an ancestor, is rejected.
+# --release-commit path (used by release.yml): HEAD as release commit passes (the failing direction is in the
+# throwaway-repository cases below).
 assert not A.provenance(good['G5'], head)
-older = A.git('rev-parse', 'HEAD~1').stdout.strip()
-if older:
-    assert any('祖先' in p for p in A.provenance(good['G5'], older)), 'evidence newer than release commit passed'
 # G3 mcp cases may be not_supported only when G1 marks mcp unsupported
 ev = copy.deepcopy(good['G3'])
 ev['cases']['mcp_remote_streaming']['result'] = 'not_supported'
@@ -109,16 +105,26 @@ for item_id, weaken in bad:
     weaken(ev)
     assert problems(item_id, ev), (item_id, 'weakened evidence still passed')
 assert good.keys() == items.keys(), 'every gate item needs a self-test'
-# Stale evidence: a commit whose product files differ from HEAD must be rejected. This uses real history:
-# CI checks out with fetch-depth: 0 and sets HACHI_REQUIRE_HISTORY=1, so there a missing case fails.
-# In a shallow local clone it is skipped with a warning instead of failing the baseline.
-shallow = A.git('rev-parse', '--is-shallow-repository').stdout.strip() == 'true'
-stale = None if shallow else next((c for c in A.git('rev-list', 'HEAD', '--', *A.PRODUCT_FILES).stdout.split()
-                                   if A.git('diff', '--quiet', c, 'HEAD', '--', *A.PRODUCT_FILES).returncode != 0), None)
-if stale:
-    assert any('过期' in p for p in A.provenance(dict(good['G5'], tested_commit=stale), None)), 'stale evidence passed'
-    tail = f' and stale evidence ({stale[:7]})'
-else:
-    assert os.environ.get('HACHI_REQUIRE_HISTORY') != '1', 'stale-evidence case needs full history (fetch-depth: 0)'
-    tail = '; WARNING: stale-evidence case skipped (shallow clone or no older product change)'
+# History checks run against a throwaway repository, so they work in shallow clones and do not depend on
+# the shape of this repo's real history: c1 product v1, c2 evidence-only change, c3 product change.
+import subprocess, tempfile
+with tempfile.TemporaryDirectory() as tmp:
+    def g(*args):
+        return subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', *args],
+                              cwd=tmp, check=True, capture_output=True, text=True).stdout.strip()
+    g('init', '-q')
+    Path(tmp, 'main.swift').write_text('v1\n'); g('add', '.'); g('commit', '-qm', 'c1'); c1 = g('rev-parse', 'HEAD')
+    Path(tmp, 'evidence').mkdir(); Path(tmp, 'evidence/x.json').write_text('{}\n'); g('add', '.'); g('commit', '-qm', 'c2')
+    c2 = g('rev-parse', 'HEAD')
+    Path(tmp, 'main.swift').write_text('v2\n'); g('commit', '-qam', 'c3'); c3 = g('rev-parse', 'HEAD')
+    saved, A.GIT_ROOT = A.GIT_ROOT, Path(tmp)
+    try:
+        ev = lambda c: dict(good['G5'], tested_commit=c)
+        assert not A.provenance(ev(c1), c2), 'evidence-only commit after the test must not make evidence stale'
+        assert any('过期' in p for p in A.provenance(ev(c1), c3)), 'stale evidence passed'
+        assert any('祖先' in p for p in A.provenance(ev(c2), c1)), 'evidence newer than the release commit passed'
+        assert any('不在仓库历史' in p for p in A.provenance(ev('e' * 40), c3)), 'unknown tested_commit passed'
+    finally:
+        A.GIT_ROOT = saved
+tail = ' and 4 history cases (stale, evidence-only, not-ancestor, unknown commit)'
 print(f'PASS: gate evaluators accept {len(good)} complete records, reject {len(bad)} weakened ones{tail}')

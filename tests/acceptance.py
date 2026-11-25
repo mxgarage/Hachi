@@ -156,8 +156,10 @@ PRODUCT_FILES = ['.', ':(exclude)docs/', ':(exclude)evidence/', ':(exclude)tests
                  ':(exclude)tests/gate_selftest.py', ':(exclude).github/',
                  ':(exclude)*.md', ':(exclude)release-gate.json', ':(exclude).gitignore']
 
+GIT_ROOT = ROOT  # the self-test points this at a throwaway repository
+
 def git(*args):
-    return subprocess.run(['git', *args], cwd=ROOT, capture_output=True, text=True)
+    return subprocess.run(['git', *args], cwd=GIT_ROOT, capture_output=True, text=True)
 
 def provenance(ev, release_commit):
     """Evidence must describe code that is actually in this history and unchanged since."""
@@ -322,6 +324,7 @@ def evaluate_gate(release_commit=None):
         if not errs and item.get('format_only'):
             notes = ['仅检查了证据格式和历史一致性，内容未经验证（维护者声明）'] + notes
         results.append(dict(id=item['id'], title=item['title'], met=not errs, problems=errs, notes=notes,
+                            format_only=bool(item.get('format_only')),
                             evidence=item['evidence'], next_step=item.get('next_step', ''), readme=item['readme']))
     return results
 
@@ -338,7 +341,8 @@ def report(baseline, gate, gate_only):
         lines += [f'- {"✅" if b["ok"] else "❌"} {b["name"]} — {b["detail"]}' for b in baseline] + ['']
     lines += [f'## 发布门槛：{met}/{len(gate)} 项满足{"" if met == len(gate) else "（未达到发布条件）"}', '']
     for g in gate:
-        lines.append(f'- {"✅" if g["met"] else "⬜"} **{g["id"]}** {g["title"]}')
+        mark = ('☑️ 格式满足' if g.get('format_only') else '✅') if g['met'] else '⬜'
+        lines.append(f'- {mark} **{g["id"]}** {g["title"]}')
         lines += [f'  - {p}' for p in g['problems'] + g['notes']]
     return '\n'.join(lines) + '\n'
 

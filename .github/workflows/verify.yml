@@ -42,8 +42,6 @@ jobs:
       # Builds, runs tests/lab.py and tests/branding.py, self-tests the gate, checks repo hygiene,
       # and evaluates the release gate (reported in the job summary; not met is expected for now).
       - run: python3 tests/acceptance.py
-        env:
-          HACHI_REQUIRE_HISTORY: '1'
       - name: Package app
         if: always()
         run: |

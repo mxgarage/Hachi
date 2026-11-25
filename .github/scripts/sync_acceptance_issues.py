@@ -49,6 +49,9 @@ def marker(item_id):
 
 def body_for(g):
     problems = '\n'.join(f'- {p}' for p in g['problems']) or '- 无'
+    if g['met']:
+        problems = ('- 证据的格式、阈值和 git 历史检查已通过。CI 无法验证实验是否真的跑过、观察器是否独立；'
+                    '维护者确认后请手动关闭这条 issue。')
     return f"""{marker(g['id'])}
 由 `acceptance-backlog` 工作流自动维护，内容会随每次验收刷新。门槛满足后这条 issue 会自动关闭。
 
@@ -98,6 +101,15 @@ def main():
                         f.write(f'- ⚠️ {msg}\n')
                 continue
         title = f'[发布门槛 {g["id"]}] {g["title"]}'
+        if g['met'] and g.get('format_only'):
+            # CI only checked format and history; the maintainer confirms and closes the issue by hand.
+            body = body_for(g)
+            if issue and issue['state'] == 'open' and (norm(issue.get('body')) != norm(body)):
+                gh('PATCH', f'/repos/{REPO}/issues/{issue["number"]}', dict(body=body))
+                print(f'{g["id"]}: format check passed, #{issue["number"]} left open for the maintainer')
+            else:
+                print(f'{g["id"]}: format check passed')
+            continue
         if g['met']:
             if issue and issue['state'] == 'open':
                 gh('POST', f'/repos/{REPO}/issues/{issue["number"]}/comments', dict(body='自动验收显示这一项已满足，关闭。'))

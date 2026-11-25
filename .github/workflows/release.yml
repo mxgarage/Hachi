@@ -42,8 +42,6 @@ jobs:
           fi
           if [ "$tag" = "v$version" ]; then echo "prerelease=false" >> "$GITHUB_OUTPUT"; else echo "prerelease=true" >> "$GITHUB_OUTPUT"; fi
       - name: Acceptance (stable release requires the full gate)
-        env:
-          HACHI_REQUIRE_HISTORY: '1'
         run: |
           if [ "${{ steps.tag.outputs.prerelease }}" = "true" ]; then
             python3 tests/acceptance.py
