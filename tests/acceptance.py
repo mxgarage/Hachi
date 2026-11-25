@@ -45,6 +45,8 @@ SECRET_PATTERNS = [
 ]
 IPV4 = re.compile(r'(?<![\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\d.])')
 ALLOWED_IP_PREFIXES = ('127.', '0.0.0.0', '192.0.2.', '198.51.100.', '203.0.113.')
+IPV6 = re.compile(r'(?<![0-9A-Za-z:])(?:[0-9a-fA-F]{1,4}:){2,7}(?::|[0-9a-fA-F]{1,4})(?:[0-9a-fA-F:]*)(?![0-9A-Za-z:])')
+ALLOWED_IPV6_PREFIXES = ('2001:db8:', '2001:0db8:', 'fe80:', '::1')
 
 def hygiene():
     files = subprocess.run(['git', 'ls-files', '-z'], cwd=ROOT, capture_output=True, check=True).stdout.split(b'\0')
@@ -65,6 +67,10 @@ def hygiene():
                 ip = m.group(0)
                 if all(int(p) <= 255 for p in m.groups()) and not ip.startswith(ALLOWED_IP_PREFIXES):
                     problems.append(f'{path.relative_to(ROOT)}:{n} IP address {ip} (use 192.0.2.x/198.51.100.x/203.0.113.x)')
+            for m in IPV6.finditer(line):
+                ip = m.group(0).lower()
+                if ip.count(':') >= 3 and re.search('[a-f]|::', ip) and not ip.startswith(ALLOWED_IPV6_PREFIXES):
+                    problems.append(f'{path.relative_to(ROOT)}:{n} IPv6 address {ip} (use 2001:db8::/32)')
     return dict(name='repo hygiene (no keys, tokens, device paths, real IPs)', ok=not problems,
                 detail='; '.join(problems[:10]) or 'clean')
 
@@ -87,19 +93,33 @@ def wilson_lower(k, n, z=1.96):
     d = 1 + z * z / n
     return (p + z * z / (2 * n) - z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))) / d
 
-def common(ev):
+def count(v):
+    """Strict non-negative integer: 0.5, "0", True and floats are rejected."""
+    return v if type(v) is int and v >= 0 else None
+
+def repo_file(rel, prefixes):
+    """A relative path inside the repo under one of prefixes, that exists."""
+    if not isinstance(rel, str) or not rel.startswith(prefixes):
+        return False
+    path = (ROOT / rel).resolve()
+    return path.is_relative_to(ROOT) and '..' not in Path(rel).parts and path.is_file()
+
+DEFAULT_CREDENTIALS = ('none', 'synthetic')
+
+def common(item, ev):
     errs = []
     if not SHA.match(str(ev.get('tested_commit', ''))):
         errs.append('tested_commit 必须是 40 位提交哈希')
     if not ev.get('environments'):
         errs.append('environments 为空（需写明 OS/架构）')
-    if ev.get('credentials') not in ('none', 'synthetic', 'authorized_test'):
-        errs.append('credentials 必须是 none / synthetic / authorized_test（不能用真实平台账号）')
+    allowed = tuple(item.get('allowed_credentials', DEFAULT_CREDENTIALS))
+    if ev.get('credentials') not in allowed:
+        errs.append(f'credentials 必须是 {" / ".join(allowed)}（不能用真实平台账号）')
     raw = ev.get('raw_results')
     if isinstance(raw, dict):
         if not str(raw.get('url', '')).startswith('https://') or not SHA256.match(str(raw.get('sha256', ''))):
             errs.append('raw_results 为对象时需要 https url 和 64 位 sha256')
-    elif not (isinstance(raw, str) and raw.startswith('evidence/') and (ROOT / raw).is_file()):
+    elif not repo_file(raw, ('evidence/',)):
         errs.append('raw_results 必须是 evidence/ 下存在的原始记录文件，或 {url, sha256}')
     return errs
 
@@ -122,13 +142,13 @@ def provenance(ev, release_commit):
     elif git('diff', '--quiet', commit, target, '--', *PRODUCT_FILES).returncode != 0:
         errs.append(f'证据已过期：{", ".join(PRODUCT_FILES)} 在 {commit[:7]} 之后有改动，需要重新测')
     matrix = ev.get('matrix_preregistered')
-    if matrix is not None and git('cat-file', '-e', f'{commit}:{matrix}').returncode != 0:
+    if isinstance(matrix, str) and git('cat-file', '-e', f'{commit}:{matrix}').returncode != 0:
         errs.append(f'matrix_preregistered {matrix} 在 tested_commit 时还不存在（不算事先登记）')
     return errs
 
 def eval_workflow_success(item, ev):
     errs, notes = [], []
-    if not str(ev.get('matrix_preregistered', '')).startswith(('docs/', 'tests/')):
+    if not repo_file(ev.get('matrix_preregistered'), ('docs/', 'tests/')):
         errs.append('matrix_preregistered 必须指向 docs/ 或 tests/ 下事先提交的场景矩阵')
     flows = ev.get('workflows', {})
     for name in item['workflows']:
@@ -137,12 +157,20 @@ def eval_workflow_success(item, ev):
             errs.append(f'{name}: 没有数据（缺覆盖不算通过）')
             continue
         if w.get('supported') is False:
-            # 声明的工作流不能靠证据自行豁免；要缩小范围，由维护者改 release-gate.json 和 README。
-            errs.append(f'{name}: 证据标为不支持；声明的工作流必须有数据，缩小范围需维护者从 release-gate.json 和 README 中删除它')
+            # 只有 README 写了 "where supported" 的工作流（release-gate.json 的 optional_workflows）可以标为不支持；
+            # 其余声明的工作流要缩小范围，由维护者改 release-gate.json 和 README。
+            if name in item.get('optional_workflows', []) and w.get('reason'):
+                notes.append(f'{name}: 不支持（{w["reason"]}），发布说明不得声称覆盖')
+            else:
+                errs.append(f'{name}: 证据标为不支持；这是必需的工作流（或没写 reason），缩小范围需维护者改 release-gate.json 和 README')
             continue
-        n, k = int(w.get('attempts', 0)), int(w.get('successes', 0))
-        if not w.get('seeds'):
-            errs.append(f'{name}: 没记录种子')
+        n, k = count(w.get('attempts')), count(w.get('successes'))
+        if n is None or k is None or k > n:
+            errs.append(f'{name}: attempts/successes 必须是非负整数且 successes ≤ attempts')
+            continue
+        for field, label in (('seeds', '种子'), ('timing', '耗时')):
+            if not w.get(field):
+                errs.append(f'{name}: 没记录{label}（{field}）')
         if n < item['min_attempts']:
             errs.append(f'{name}: 次数 {n} < {item["min_attempts"]}')
             continue
@@ -159,13 +187,13 @@ def eval_critical_failures(item, ev):
     if obs.get('independent') is not True:
         errs.append('observer.independent 必须为 true（应用日志不算）')
     for key in ('protected_flows', 'control_workloads'):
-        if int(ev.get(key, 0)) <= 0:
-            errs.append(f'{key} 必须 > 0')
+        if not count(ev.get(key)):
+            errs.append(f'{key} 必须是正整数')
     for key in ('direct_or_wrong_route_egress', 'control_interruptions', 'control_route_changes'):
         if key not in ev:
             errs.append(f'缺少 {key}')
-        elif int(ev[key]) != 0:
-            errs.append(f'{key} = {ev[key]}（必须为 0）')
+        elif count(ev[key]) != 0:
+            errs.append(f'{key} = {ev[key]!r}（必须是整数 0）')
     return errs, [f'观察器：{obs.get("kind", "?")}']
 
 def eval_lab_cases(item, ev):
@@ -188,7 +216,7 @@ def eval_transfer(item, ev):
     if ev.get('same_enforcement_mechanism') is not True:
         errs.append('same_enforcement_mechanism 必须为 true')
     gaps = ev.get('gaps_document', '')
-    if not str(gaps).startswith('docs/') or not (ROOT / gaps).is_file():
+    if not repo_file(gaps, ('docs/',)):
         errs.append('gaps_document 必须指向 docs/ 下存在的差距文档')
     return errs, []
 
@@ -213,8 +241,8 @@ def evaluate_gate(release_commit=None):
             try:
                 ev = json.loads(path.read_text(encoding='utf-8'))
                 errs, notes = EVALUATORS[item['kind']](item, ev)
-                errs = common(ev) + provenance(ev, release_commit) + errs
-            except (ValueError, TypeError, AttributeError) as e:
+                errs = common(item, ev) + provenance(ev, release_commit) + errs
+            except Exception as e:  # any malformed evidence is not met, never a crash
                 errs, notes = [f'证据文件格式错误：{e}'], []
         results.append(dict(id=item['id'], title=item['title'], met=not errs, problems=errs, notes=notes,
                             evidence=item['evidence'], next_step=item.get('next_step', ''), readme=item['readme']))

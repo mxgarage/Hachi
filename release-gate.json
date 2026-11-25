@@ -8,6 +8,7 @@
       "readme": "Require at least 95% successful end-to-end operations in each declared workflow ... on a preregistered held-out scenario matrix",
       "evidence": "evidence/G1-workflow-success.json",
       "workflows": ["desktop", "cli", "browser_authorization", "mcp"],
+      "optional_workflows": ["mcp"],
       "min_rate": 0.95,
       "min_rate_basis": "Wilson 95% lower bound, not the point estimate",
       "min_attempts": 60,
@@ -41,6 +42,7 @@
       "title": "迁移证据：夹具客户端和真实签名客户端走同一套系统执行机制",
       "readme": "Transfer evidence: exercise the same final OS enforcement mechanism across fixture clients and real signed client binaries in isolated homes.",
       "evidence": "evidence/G4-transfer.json",
+      "allowed_credentials": ["none", "synthetic", "authorized_test"],
       "next_step": "先在隔离 home 里做无凭据运行，核对进程和签名身份、辅助进程、重定向和 DNS 行为，差距写进 docs/ 下的文档并在证据里引用。不使用任何真实平台账号。"
     },
     {

@@ -12,7 +12,7 @@ head = A.git('rev-parse', 'HEAD').stdout.strip()
 base = dict(tested_commit=head, environments=['macOS 15 arm64'], credentials='synthetic', raw_results='evidence/README.md')
 good = {
     'G1': dict(base, matrix_preregistered='tests/lab.py', workflows={
-        w: dict(attempts=400, successes=396, seeds=[1, 2, 3]) for w in items['G1']['workflows']}),
+        w: dict(attempts=400, successes=396, seeds=[1, 2, 3], timing=dict(median_s=4.2, p95_s=9.8)) for w in items['G1']['workflows']}),
     'G2': dict(base, observer=dict(independent=True, kind='gateway pcap'), protected_flows=50, control_workloads=10,
                direct_or_wrong_route_egress=0, control_interruptions=0, control_route_changes=0),
     'G3': dict(base, cases={c: dict(result='pass') for c in items['G3']['cases']}),
@@ -30,6 +30,16 @@ bad = [
     ('G1', lambda e: [e['workflows'].__setitem__(w, dict(supported=False, reason='n/a'))
                       for w in ('cli', 'browser_authorization', 'mcp')]),
     ('G1', lambda e: e.update(credentials='real_account')),
+    ('G1', lambda e: e.update(credentials='authorized_test')),  # only G4 may use authorized test credentials
+    ('G1', lambda e: e['workflows'].__setitem__('cli', dict(supported=False, reason='n/a'))),  # cli is mandatory
+    ('G1', lambda e: e['workflows']['desktop'].update(successes=401)),
+    ('G1', lambda e: e['workflows']['desktop'].update(attempts=400.0)),
+    ('G1', lambda e: e['workflows']['desktop'].pop('timing')),
+    ('G1', lambda e: e.update(matrix_preregistered='tests/../README.md')),
+    ('G2', lambda e: e.update(direct_or_wrong_route_egress=0.5)),
+    ('G2', lambda e: e.update(control_interruptions='0')),
+    ('G2', lambda e: e.update(protected_flows=1e999)),
+    ('G4', lambda e: e.update(gaps_document='/etc/hosts')),
     ('G2', lambda e: e.update(direct_or_wrong_route_egress=1)),
     ('G2', lambda e: e['observer'].update(independent=False)),
     ('G2', lambda e: e.pop('control_route_changes')),
@@ -47,7 +57,13 @@ bad = [
 
 def problems(item_id, ev):
     errs, _ = A.EVALUATORS[items[item_id]['kind']](items[item_id], ev)
-    return A.common(ev) + A.provenance(ev, None) + errs
+    return A.common(items[item_id], ev) + A.provenance(ev, None) + errs
+
+# mcp is "where supported": it may be marked unsupported with a reason
+ev = copy.deepcopy(good['G1'])
+ev['workflows']['mcp'] = dict(supported=False, reason='no MCP client in this release')
+assert not problems('G1', ev), problems('G1', ev)
+assert not problems('G4', dict(good['G4'], credentials='authorized_test'))
 
 for item_id, ev in good.items():
     assert not problems(item_id, ev), (item_id, problems(item_id, ev))

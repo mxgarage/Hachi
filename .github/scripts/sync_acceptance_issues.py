@@ -2,7 +2,7 @@
 
 Reads build/acceptance/report.json from tests/acceptance.py --gate-only.
 - unmet item, no issue  -> create it
-- unmet item, issue closed -> reopen it
+- unmet item, issue closed by this workflow -> reopen it (closed by a person -> leave it, warn)
 - unmet item, body changed -> update it
 - met item, issue open  -> comment and close it as completed
 Never adds the `claude` label: starting an implementation stays a human decision.
@@ -40,6 +40,9 @@ def gh(method, path, body=None):
         if method == 'GET' and e.code == 404:
             return None
         raise
+
+def norm(text):
+    return '\n'.join(line.rstrip() for line in (text or '').replace('\r\n', '\n').strip().splitlines())
 
 def marker(item_id):
     return f'<!-- hachi-gate:{item_id} -->'
@@ -82,13 +85,18 @@ def main():
         existing = [i for i in issues if marker(g['id']) in (i.get('body') or '')
                     and i['user']['login'] == BOT]
         issue = next((i for i in existing if i['state'] == 'open'), existing[0] if existing else None)
-        if issue and issue['state'] == 'closed' and issue.get('state_reason') == 'not_planned':
-            msg = f'{g["id"]}: 未满足，但维护者已把 #{issue["number"]} 以 not planned 关闭，不再提醒；要恢复提醒就重新打开它'
-            print(msg)
-            if os.environ.get('GITHUB_STEP_SUMMARY'):
-                with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as f:
-                    f.write(f'- ⚠️ {msg}\n')
-            continue
+        if issue and issue['state'] == 'closed' and not g['met']:
+            # Reopen only what this workflow itself closed (the item regressed). A person's close, for any
+            # reason, is respected; the summary says how to resume reminders.
+            closer = ((gh('GET', f'/repos/{REPO}/issues/{issue["number"]}') or {}).get('closed_by') or {}).get('login')
+            if closer != BOT:
+                msg = (f'{g["id"]}: 未满足，但 {closer or "维护者"} 已手动关闭 #{issue["number"]}'
+                       f'（{issue.get("state_reason") or "closed"}），不再提醒；要恢复提醒就重新打开它')
+                print(msg)
+                if os.environ.get('GITHUB_STEP_SUMMARY'):
+                    with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as f:
+                        f.write(f'- ⚠️ {msg}\n')
+                continue
         title = f'[发布门槛 {g["id"]}] {g["title"]}'
         if g['met']:
             if issue and issue['state'] == 'open':
@@ -102,7 +110,7 @@ def main():
         if not issue:
             created = gh('POST', f'/repos/{REPO}/issues', dict(title=title, body=body, labels=[LABEL]))
             print(f'{g["id"]}: not met, created #{created.get("number", "?")}')
-        elif issue['state'] != 'open' or issue.get('body') != body or issue['title'] != title:
+        elif issue['state'] != 'open' or norm(issue.get('body')) != norm(body) or issue['title'] != title:
             gh('PATCH', f'/repos/{REPO}/issues/{issue["number"]}', dict(title=title, body=body, state='open'))
             print(f'{g["id"]}: not met, updated #{issue["number"]}')
         else:
