@@ -16,6 +16,7 @@
     },
     {
       "id": "G2",
+      "format_only": true,
       "kind": "critical_failures",
       "title": "关键失败为零：受保护流量无直连或错路出口，对照工作负载不中断",
       "readme": "zero observed direct or wrong-route egress for protected flows ... Verify at an independent network observer; app logs alone do not count.",
@@ -25,6 +26,7 @@
     },
     {
       "id": "G3",
+      "format_only": true,
       "kind": "lab_cases",
       "title": "初始实验用例全部通过",
       "readme": "Initial lab cases: TCP/TLS streams including reconnect and token-like refresh, system/browser redirect and loopback callback, DNS IPv4/IPv6/UDP, MCP stdio child isolation and remote streaming. Inject route change, tunnel/core loss, already-open flows, sleep/wake, interface switch, update and extension disable/restart.",
@@ -40,6 +42,7 @@
     },
     {
       "id": "G4",
+      "format_only": true,
       "kind": "transfer",
       "title": "迁移证据：夹具客户端和真实签名客户端走同一套系统执行机制",
       "readme": "Transfer evidence: exercise the same final OS enforcement mechanism across fixture clients and real signed client binaries in isolated homes.",
@@ -48,6 +51,7 @@
     },
     {
       "id": "G5",
+      "format_only": true,
       "kind": "network_extension",
       "title": "签名 Network Extension 可行性，以及扩展不可用时的独立测试",
       "readme": "Key blocker: signed Network Extension feasibility and independent test of behavior when extensions are unavailable.",

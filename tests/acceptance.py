@@ -294,6 +294,8 @@ def evaluate_gate(release_commit=None):
                 errs = common(item, ev) + provenance(ev, release_commit) + errs
             except Exception as e:  # any malformed evidence is not met, never a crash
                 errs, notes = [f'证据文件格式错误：{e}'], []
+        if not errs and item.get('format_only'):
+            notes = ['仅检查了证据格式和历史一致性，内容未经验证（维护者声明）'] + notes
         results.append(dict(id=item['id'], title=item['title'], met=not errs, problems=errs, notes=notes,
                             evidence=item['evidence'], next_step=item.get('next_step', ''), readme=item['readme']))
     return results

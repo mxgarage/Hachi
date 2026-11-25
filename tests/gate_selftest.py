@@ -26,11 +26,13 @@ good = {
 }
 bad = [
     ('G1', lambda e: e['workflows']['mcp'].update(successes=376)),
-    ('G1', lambda e: e['workflows']['mcp'].update(attempts=60, successes=57)),  # 95.0% point estimate, lower bound 86%
-    ('G1', lambda e: e['workflows']['cli'].update(attempts=60, successes=60)),  # 100% but lower bound 94%
+    ('G1', lambda e: e['workflows']['mcp'].update(attempts=60, successes=57)),  # rejected by min_attempts
+    ('G1', lambda e: e['workflows']['cli'].update(attempts=60, successes=60)),  # rejected by min_attempts
+    ('G1', lambda e: e['workflows']['cli'].update(attempts=400, successes=380)),  # point 95.0% but Wilson lower bound ~92.4%
+    ('G1', lambda e: e['workflows']['cli'].update(attempts=100, successes=99)),  # point 99% but lower bound ~94.6%
     ('G1', lambda e: e['workflows'].pop('cli')),
     ('G1', lambda e: e['workflows']['desktop'].update(attempts=10, successes=10)),
-    ('G1', lambda e: e['workflows']['desktop'].update(attempts=72, successes=72)),  # lower bound 94.9%
+    ('G1', lambda e: e['workflows']['desktop'].update(attempts=72, successes=72)),  # rejected by min_attempts (= 73)
     ('G1', lambda e: e['workflows'].__setitem__('mcp', dict(supported=False))),
     ('G1', lambda e: [e['workflows'].__setitem__(w, dict(supported=False, reason='n/a'))
                       for w in ('cli', 'browser_authorization', 'mcp')]),
@@ -70,6 +72,8 @@ def problems(item_id, ev):
     errs, _ = A.EVALUATORS[items[item_id]['kind']](items[item_id], ev)
     return A.common(items[item_id], ev) + A.provenance(ev, None) + errs
 
+for k, n in ((380, 400), (99, 100)):  # make sure these really exercise the lower bound, not min_attempts
+    assert n >= items['G1']['min_attempts'] and k / n >= items['G1']['min_rate'] > A.wilson_lower(k, n)
 assert A.wilson_lower(73, 73) >= items['G1']['min_rate'] > A.wilson_lower(72, 72), 'min_attempts must be the smallest passing all-success count'
 # G3 mcp cases may be not_supported only when G1 marks mcp unsupported
 ev = copy.deepcopy(good['G3'])
@@ -95,7 +99,7 @@ assert good.keys() == items.keys(), 'every gate item needs a self-test'
 # CI checks out with fetch-depth: 0 and sets HACHI_REQUIRE_HISTORY=1, so there a missing case fails.
 # In a shallow local clone it is skipped with a warning instead of failing the baseline.
 shallow = A.git('rev-parse', '--is-shallow-repository').stdout.strip() == 'true'
-stale = None if shallow else next((c for c in A.git('rev-list', 'HEAD', '--', *A.PRODUCT_FILES).stdout.split()[1:]
+stale = None if shallow else next((c for c in A.git('rev-list', 'HEAD', '--', *A.PRODUCT_FILES).stdout.split()
                                    if A.git('diff', '--quiet', c, 'HEAD', '--', *A.PRODUCT_FILES).returncode != 0), None)
 if stale:
     assert any('过期' in p for p in A.provenance(dict(good['G5'], tested_commit=stale), None)), 'stale evidence passed'
