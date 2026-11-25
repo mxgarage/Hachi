@@ -100,10 +100,10 @@ def main():
                     and i['user']['login'] == BOT]
         issue = next((i for i in existing if i['state'] == 'open'), existing[0] if existing else None)
         if issue and issue['state'] == 'closed' and not g['met']:
-            # Reopen only what this workflow itself closed (the item regressed). A person's close, for any
-            # reason, is respected; the summary says how to resume reminders.
-            # Exception: an issue the maintainer closed after it was met (body carries MET_MARK) is reopened when
-            # the item regresses, e.g. evidence went stale after a product change.
+            # Reopen what this workflow itself closed (the item regressed). A person's close is respected,
+            # except when the item has been format-met at some point (body carries MET_MARK): then a regression
+            # reopens it, even if the person had closed it earlier for another reason. closed_by is only the
+            # last closer.
             closer = ((gh('GET', f'/repos/{REPO}/issues/{issue["number"]}') or {}).get('closed_by') or {}).get('login')
             if closer != BOT and MET_MARK not in (issue.get('body') or ''):
                 msg = (f'{g["id"]}: 未满足，但 {closer or "维护者"} 已手动关闭 #{issue["number"]}'
