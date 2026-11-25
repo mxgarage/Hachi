@@ -109,6 +109,8 @@ bad = [
     ('G6', lambda e: e.update(screenshots_run='https://example.invalid/run/1')),
     ('G6', lambda e: e.update(signed_off_by='  ')),
     ('G6', lambda e: e.pop('signed_off_at')),
+    ('G6', lambda e: e.update(signed_off_at='2026-99-99xyz')),
+    ('G6', lambda e: e.update(signed_off_at='2026-02-30')),
     ('G6', lambda e: e.update(credentials='real_account')),
 ]
 
@@ -159,7 +161,8 @@ for item_id, weaken in bad:
     weaken(ev)
     assert problems(item_id, ev), (item_id, 'weakened evidence still passed')
 assert good.keys() == items.keys(), 'every gate item needs a self-test'
-assert len(good['G6']['checks']) >= 10, 'docs/ux-checklist.md lost its items'
+# Pinned: removing a checklist item must be a visible change here too, not just in docs/ (AGENTS.md).
+assert sorted(good['G6']['checks']) == [f'UX-{i:02d}' for i in range(1, 14)], 'docs/ux-checklist.md items changed'
 # History checks run against a throwaway repository, so they work in shallow clones and do not depend on
 # the shape of this repo's real history: c1 product v1, c2 evidence-only change, c3 product change.
 import subprocess, tempfile

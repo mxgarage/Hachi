@@ -8,6 +8,8 @@ name: Release
 # 构建 job 只读；只有最后的发布 job 有写权限，且不运行仓库里的代码。
 # 如果这个 tag 已经有 release（例如维护者在网页上手动建的），安装包会挂到那个 release 上，不再另建草稿。
 # 手动运行（Actions → Release → Run workflow，填已有的 tag）：为已有 tag 重新构建并补挂安装包。
+#   手动运行会替换已挂的同名安装包（新的 SHA-256 写在 job summary）。稳定 tag 仍要求等于当前 main HEAD，main 前进后旧的稳定 tag 无法这样补挂。
+#   “挂到已有 release”和手动运行这两条路径合并时还没有用真实 tag 跑过。
 on:
   push:
     tags: ['v*']
@@ -123,15 +125,20 @@ jobs:
           TAG: ${{ needs.build.outputs.tag }}
         run: |
           assets=(dist/Hachi-*-macos.zip dist/Hachi-*-macos.zip.sha256)
+          # The acceptance report travels as an asset too, so a release whose notes were written by hand still
+          # shows the gate status (for a suffixed tag: not met).
+          cp dist/release-notes.md "dist/Hachi-${TAG}-acceptance.md"
           upload_to() {  # attach (replace) the assets on an existing release, by id
-            local id=$1 f n old
-            for f in "${assets[@]}"; do
+            local id=$1 extra=$2 f n old
+            for f in "${assets[@]}" "$extra"; do
               n=$(basename "$f")
               old=$(gh api "repos/$GH_REPO/releases/$id/assets" --jq ".[] | select(.name == \"$n\") | .id")
               [ -n "$old" ] && gh api -X DELETE "repos/$GH_REPO/releases/assets/$old"
+              [ -n "$old" ] && echo "- replaced \`$n\`" >> "$GITHUB_STEP_SUMMARY"
               gh api -X POST "https://uploads.github.com/repos/$GH_REPO/releases/$id/assets?name=$n" \
                 -H 'Content-Type: application/octet-stream' --input "$f" --jq .browser_download_url
             done
+            echo "SHA-256: \`$(cut -d' ' -f1 dist/Hachi-*-macos.zip.sha256)\` (if the notes quote an older hash, it no longer applies)" >> "$GITHUB_STEP_SUMMARY"
           }
           # 1) A release for this tag already exists (e.g. created by hand on the Releases page): attach the app
           #    there instead of creating a second, draft release. Its title and notes are left as written; a
@@ -141,7 +148,7 @@ jobs:
           [[ "$published" =~ ^[0-9]+$ ]] || published=""  # 404 for no published release
           [[ "$draft" =~ ^[0-9]+$ ]] || draft=""
           if [ -n "$published" ]; then
-            upload_to "$published"
+            upload_to "$published" "dist/Hachi-${TAG}-acceptance.md"
             if [ "$PRERELEASE" = "true" ]; then
               gh api -X PATCH "repos/$GH_REPO/releases/$published" -F prerelease=true -f make_latest=false --silent
             fi
@@ -149,7 +156,7 @@ jobs:
             exit 0
           fi
           if [ -n "$draft" ]; then
-            upload_to "$draft"
+            upload_to "$draft" "dist/Hachi-${TAG}-acceptance.md"
             echo "Attached the app to the existing draft release for $TAG; publish it from the Releases page." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi

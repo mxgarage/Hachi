@@ -366,7 +366,13 @@ def eval_network_extension(item, ev):
 
 CHECK_ID = re.compile(r'^- \*\*(UX-\d{2})\*\*', re.M)
 RUN_URL = re.compile(r'^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/actions/runs/\d+$')
-DATE = re.compile(r'^\d{4}-\d{2}-\d{2}')
+def iso_date(v):
+    import datetime
+    try:
+        datetime.date.fromisoformat(v)
+        return isinstance(v, str) and len(v) == 10
+    except (TypeError, ValueError):
+        return False
 
 def checklist_ids(path):
     return CHECK_ID.findall((ROOT / path).read_text(encoding='utf-8'))
@@ -401,7 +407,7 @@ def eval_ux_signoff(item, ev):
     who = ev.get('signed_off_by')
     if not isinstance(who, str) or not who.strip():
         errs.append('signed_off_by 必须写明签字的维护者')
-    if not DATE.match(str(ev.get('signed_off_at', ''))):
+    if not iso_date(ev.get('signed_off_at')):
         errs.append('signed_off_at 必须是日期（YYYY-MM-DD）')
     # docs/ is not a product file, so the checklist's own history is checked here: it must have existed at
     # tested_commit and be unchanged since, otherwise the walkthrough was against a different list.
