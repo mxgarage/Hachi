@@ -200,8 +200,12 @@ with tempfile.TemporaryDirectory() as tmp:
         A.ROOT = saved
 # --require-gate: exit 1 while any item is unmet (the repository has no evidence yet), 0 without the flag.
 if not any((A.ROOT / i['evidence']).exists() for i in items.values()):
-    run = lambda *f: subprocess.run([sys.executable, str(A.ROOT / 'tests/acceptance.py'), '--gate-only', *f],
-                                    cwd=A.ROOT, capture_output=True).returncode
-    assert run() == 0 and run('--require-gate') == 1, 'unmet gate must fail --require-gate'
+    with tempfile.TemporaryDirectory() as out:
+        # separate output directory, and no job-summary output, so the real report is untouched
+        env = {k: v for k, v in os.environ.items() if k != 'GITHUB_STEP_SUMMARY'}
+        env['HACHI_ACCEPTANCE_OUT'] = out
+        run = lambda *f: subprocess.run([sys.executable, str(A.ROOT / 'tests/acceptance.py'), '--gate-only', *f],
+                                        cwd=A.ROOT, env=env, capture_output=True).returncode
+        assert run() == 0 and run('--require-gate') == 1, 'unmet gate must fail --require-gate'
 tail = ' and 4 history cases (stale, evidence-only, not-ancestor, unknown commit), plus evaluate_gate on missing/malformed evidence'
 print(f'PASS: gate evaluators accept {len(good)} complete records, reject {len(bad)} weakened ones{tail}')

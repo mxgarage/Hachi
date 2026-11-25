@@ -26,7 +26,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / 'build' / 'acceptance'
+OUT = Path(os.environ.get('HACHI_ACCEPTANCE_OUT') or ROOT / 'build' / 'acceptance')  # the self-test redirects this
 SHA = re.compile(r'^[0-9a-f]{40}$')
 SHA256 = re.compile(r'^[0-9a-f]{64}$')
 
