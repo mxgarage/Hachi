@@ -138,9 +138,13 @@ struct Result: Codable {
 }
 
 func check(_ provider: String) -> Result {
+    runEntry(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin/\(provider)-safe"),
+             provider: provider)
+}
+
+func runEntry(_ entry: URL, provider: String) -> Result {
     let process = Process()
-    process.executableURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".local/bin/\(provider)-safe")
+    process.executableURL = entry
     process.arguments = ["--check-only"]
     let output = Pipe()
     process.standardOutput = output; process.standardError = output
@@ -228,7 +232,6 @@ final class MenuPicture: NSView {
     }
 }
 
-/// The status item as it sits in the menu bar: the template icon tinted like the system does.
 /// The status item as it sits in the menu bar, with its tooltip drawn underneath (the system tooltip itself
 /// cannot be captured offscreen).
 final class MenuBarPicture: NSView {
@@ -272,6 +275,16 @@ func savePNG(_ view: NSView, appearance: NSAppearance, to url: URL) throws {
     if let failure { throw failure }
 }
 
+/// Regression check for the in-progress row: with a real target/action, mark it checking and let the menu
+/// validate its items (as it does before opening). With autoenabling on, update() would re-enable the row.
+func checkingRowStaysDisabled() -> Bool {
+    let menu = makeMenu(target: NSApplication.shared, action: #selector(NSApplication.terminate(_:)))
+    guard let row = menu.items.first(where: { $0.representedObject as? String == "claude" }) else { return false }
+    _ = setChecking(row, true)
+    menu.update()
+    return !row.isEnabled
+}
+
 /// Writes a PNG of every menu-bar, menu and alert state in light and dark appearance, plus ui-states.json with
 /// the texts shown in each state. The evidence texts in the alerts are labelled as examples.
 func renderUI(into dir: URL) throws {
@@ -303,8 +316,8 @@ func renderUI(into dir: URL) throws {
         { alertState("alert-claude-blocked", Result(provider: "claude", status: "blocked", evidence: example)) },
         { alertState("alert-codex-passed", Result(provider: "codex", status: "passed", evidence: example)) },
         { alertState("alert-codex-blocked", Result(provider: "codex", status: "blocked", evidence: example)) },
-        { alertState("alert-entry-missing", Result(provider: "claude", status: "blocked",
-                                                         evidence: "无法运行预检入口：（示例）找不到 claude-safe")) },
+        // the real failure path: run an entry that does not exist, as check() does when claude-safe is missing
+        { alertState("alert-entry-missing", runEntry(dir.appendingPathComponent("missing/claude-safe"), provider: "claude")) },
     ]
     for (label, name) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
         guard let appearance = NSAppearance(named: name) else { continue }
@@ -317,6 +330,7 @@ func renderUI(into dir: URL) throws {
     }
     let manifest: [String: Any] = ["states": states, "tooltips": ["idle": idleTooltip, "checking": checkingTooltip],
                                    "menuAutoenablesItems": makeMenu(target: nil, action: nil).autoenablesItems,
+                                   "checkingRowStaysDisabled": checkingRowStaysDisabled(),
                                    "note": "Menus are drawn from the real menu items; the system menu itself is not captured."]
     let data = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
     try data.write(to: dir.appendingPathComponent("ui-states.json"))

@@ -365,7 +365,15 @@ def eval_network_extension(item, ev):
     return errs, []
 
 CHECK_ID = re.compile(r'^- \*\*(UX-\d{2})\*\*', re.M)
-RUN_URL = re.compile(r'^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/actions/runs/\d+$')
+RUN_URL = re.compile(r'^https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/actions/runs/\d+$')
+
+def repo_slug():
+    """owner/repo of this repository (CI env or the origin remote); None when unknown."""
+    if os.environ.get('GITHUB_REPOSITORY'):
+        return os.environ['GITHUB_REPOSITORY']
+    url = subprocess.run(['git', 'remote', 'get-url', 'origin'], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    m = re.search(r'github\.com[:/]([^/]+/[^/]+?)(?:\.git)?$', url)
+    return m.group(1) if m else None
 def iso_date(v):
     """A real calendar date written exactly as YYYY-MM-DD (strptime rejects week dates such as 2026-W01-1)."""
     import datetime
@@ -402,8 +410,12 @@ def eval_ux_signoff(item, ev):
     looks = ev.get('appearances')
     if not isinstance(looks, list) or not set(item.get('appearances', [])) <= set(looks):
         errs.append('appearances 必须包含 ' + ' / '.join(item.get('appearances', [])))
-    if not RUN_URL.match(str(ev.get('screenshots_run', ''))):
+    run = RUN_URL.match(str(ev.get('screenshots_run', '')))
+    slug = repo_slug()
+    if not run:
         errs.append('screenshots_run 必须是这次 tested_commit 的 CI 运行链接（https://github.com/<owner>/<repo>/actions/runs/<id>）')
+    elif slug and run.group(1).lower() != slug.lower():
+        errs.append(f'screenshots_run 必须是本仓库（{slug}）的 CI 运行')
     who = ev.get('signed_off_by')
     if not isinstance(who, str) or not who.strip():
         errs.append('signed_off_by 必须写明签字的维护者')

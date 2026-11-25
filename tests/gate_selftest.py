@@ -34,7 +34,7 @@ good = {
     'G5': dict(base, signed_extension_loaded=True, data_plane_tested=True, unavailable_behavior_tested=True,
                feasibility_document=GAPS),
     'G6': dict(base, appearances=['light', 'dark'], signed_off_by='maintainer', signed_off_at='2026-12-01',
-               screenshots_run='https://github.com/example/hachi/actions/runs/123',
+               screenshots_run=f'https://github.com/{A.repo_slug() or "example/hachi"}/actions/runs/123',
                checks={i: dict(result='pass', note='ok') for i in A.checklist_ids(items['G6']['checklist'])}),
 }
 def set_counts(w, n, k):
@@ -107,6 +107,7 @@ bad = [
     ('G6', lambda e: e.update(checks=[])),
     ('G6', lambda e: e.update(appearances=['light'])),  # dark mode not reviewed
     ('G6', lambda e: e.update(screenshots_run='https://example.invalid/run/1')),
+    ('G6', lambda e: e.update(screenshots_run='https://github.com/someone/else/actions/runs/1')),  # other repo
     ('G6', lambda e: e.update(signed_off_by='  ')),
     ('G6', lambda e: e.pop('signed_off_at')),
     ('G6', lambda e: e.update(signed_off_at='2026-99-99xyz')),
@@ -163,6 +164,7 @@ for item_id, weaken in bad:
     assert problems(item_id, ev), (item_id, 'weakened evidence still passed')
 assert good.keys() == items.keys(), 'every gate item needs a self-test'
 # Pinned: removing a checklist item must be a visible change here too, not just in docs/ (AGENTS.md).
+assert A.repo_slug(), 'selftest needs to know this repository (origin remote or GITHUB_REPOSITORY)'
 assert sorted(good['G6']['checks']) == [f'UX-{i:02d}' for i in range(1, 14)], 'docs/ux-checklist.md items changed'
 # History checks run against a throwaway repository, so they work in shallow clones and do not depend on
 # the shape of this repo's real history: c1 product v1, c2 evidence-only change, c3 product change.

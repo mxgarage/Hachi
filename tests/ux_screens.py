@@ -41,9 +41,10 @@ for (name, look), s in states.items():
 for name in EXPECTED:
     assert images[(name, 'light')] != images[(name, 'dark')], f'{name}: light and dark render identically'
 assert images[('menubar-checking', 'light')] != images[('menubar-rest', 'light')], 'checking tooltip not drawn'
-# runCheck greys out its row through setChecking(); that only works with manual enabling. The greyed row in the
-# screenshot is set by the renderer, so this flag is what ties the picture to the app's real behaviour.
+# runCheck greys out its row through setChecking(). The greyed row in the screenshot is drawn by MenuPicture from
+# isEnabled; checkingRowStaysDisabled is the real check: a row with target/action stays disabled after menu.update().
 assert manifest['menuAutoenablesItems'] is False, 'menu autoenabling would ignore setChecking (row never greys out)'
+assert manifest['checkingRowStaysDisabled'] is True, 'a checking row is re-enabled when the menu validates its items'
 assert images[('menubar-rest', 'light')] != images[('menubar-wag', 'light')], 'tail pose does not change the icon'
 assert images[('menu-checking-claude', 'light')] != images[('menu-network-available', 'light')], \
     'the greyed-out checking row must render differently'
@@ -57,7 +58,10 @@ for n in EXPECTED:
     if n.startswith('alert-'):
         body = '\n'.join(texts(n))
         assert '未启动客户端' in body and '未覆盖' in body, (n, body)
-        assert '示例' in body, f'{n}: screenshot evidence must be labelled as an example'
+        if n == 'alert-entry-missing':
+            assert '无法运行预检入口' in body, body  # produced by the real runEntry() failure path
+        else:
+            assert '示例' in body, f'{n}: screenshot evidence must be labelled as an example'
 assert '[disabled] 系统网络：等待状态' in texts('menu-network-waiting')
 assert any('可用（不是出口验证）' in t for t in texts('menu-network-available'))
 assert '[disabled] 检查 Claude 出口' in texts('menu-checking-claude') and '检查 Codex 出口' in texts('menu-checking-claude')
