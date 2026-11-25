@@ -82,12 +82,14 @@ jobs:
   publish:
     needs: build
     # 维护者决定（2026-11-25）：推 tag 自动发布，但要审批。审批靠 Settings → Environments → release 的
-    # required reviewers；没配好之前，这个 job 会不经审批直接发布（免费组织的私有仓库可能用不了这个保护）。
+    # required reviewers。失败时关闭：如果读不到这个审批规则（没配，或这个套餐用不了），只建 draft release，
+    # 由维护者在 Releases 页面手动发布。
     environment: release
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: write
+      actions: read  # read the release environment's protection rules
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -101,6 +103,14 @@ jobs:
         run: |
           flags=()
           if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          # Fail closed: publish directly only if this environment really has required reviewers (so a person
+          # approved this job). Otherwise, or if the rules cannot be read, create a draft for the maintainer.
+          reviewers=$(gh api "repos/$GH_REPO/environments/release" \
+            --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length' 2>/dev/null || echo 0)
+          if [ "${reviewers:-0}" -lt 1 ]; then
+            flags+=(--draft)
+            echo "::warning::release environment has no required reviewers (or they could not be read); created a draft release. Publish it by hand from the Releases page."
+          fi
           gh release create "$GITHUB_REF_NAME" --verify-tag --title "Hachi $GITHUB_REF_NAME" \
             --notes-file dist/release-notes.md "${flags[@]}" \
             dist/Hachi-*-macos.zip dist/Hachi-*-macos.zip.sha256
