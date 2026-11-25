@@ -166,6 +166,7 @@ PRODUCT_FILES = ['.', ':(exclude)docs/', ':(exclude)evidence/', ':(exclude)tests
                  ':(exclude)*.md', ':(exclude)release-gate.json', ':(exclude).gitignore']
 
 GIT_ROOT = ROOT  # the self-test points this at a throwaway repository
+RELEASE_COMMIT = None  # set by evaluate_gate; used when G3 checks the G1 waiver
 
 def git(*args):
     return subprocess.run(['git', *args], cwd=GIT_ROOT, capture_output=True, text=True)
@@ -284,11 +285,16 @@ def eval_critical_failures(item, ev):
     return errs, [f'观察器：{obs.get("kind", "?")}；{len(required) - len(missing)}/{len(required)} 个故障场景有数据']
 
 def unsupported_workflows():
-    """Workflows that G1 evidence marks unsupported (only optional ones count, see eval_workflow_success)."""
+    """Workflows that G1 evidence marks unsupported (only optional ones count, see eval_workflow_success).
+    The waiver counts only when the G1 evidence itself is met, so stale or invalid G1 evidence cannot excuse G3 cases."""
     g1 = next(i for i in MANIFEST['items'] if i['kind'] == 'workflow_success')
     try:
-        flows = json.loads((ROOT / g1['evidence']).read_text(encoding='utf-8')).get('workflows', {})
-    except (OSError, ValueError, AttributeError):
+        ev = json.loads((ROOT / g1['evidence']).read_text(encoding='utf-8'))
+        flows = ev.get('workflows', {})
+        errs, _ = EVALUATORS[g1['kind']](g1, ev)
+        if errs or common(g1, ev) or provenance(ev, RELEASE_COMMIT):
+            return set()
+    except Exception:
         return set()
     return {n for n in g1.get('optional_workflows', []) if isinstance(flows.get(n), dict) and flows[n].get('supported') is False}
 
@@ -350,6 +356,8 @@ EVALUATORS = dict(workflow_success=eval_workflow_success, critical_failures=eval
 MANIFEST = json.loads((ROOT / 'release-gate.json').read_text(encoding='utf-8'))
 
 def evaluate_gate(release_commit=None):
+    global RELEASE_COMMIT
+    RELEASE_COMMIT = release_commit
     results = []
     for item in MANIFEST['items']:
         path = ROOT / item['evidence']

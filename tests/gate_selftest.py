@@ -9,6 +9,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import acceptance as A
 
+REAL_UNSUPPORTED = A.unsupported_workflows
 A.unsupported_workflows = lambda: set()  # never depend on real evidence on disk; tested explicitly below
 items = {i['id']: i for i in json.loads((A.ROOT / 'release-gate.json').read_text(encoding='utf-8'))['items']}
 head = A.git('rev-parse', 'HEAD').stdout.strip()
@@ -178,6 +179,15 @@ with tempfile.TemporaryDirectory() as tmp:
             write(item_id, json.dumps(ev))
         res = {r['id']: r for r in A.evaluate_gate()}
         assert all(r['met'] and r['format_only'] and r['notes'] for r in res.values()), res
+        # The MCP waiver for G3 needs valid G1 evidence: accepted when G1 is met, ignored when G1 is stale/invalid.
+        A.unsupported_workflows = REAL_UNSUPPORTED
+        g1 = copy.deepcopy(good['G1']); g1['workflows']['mcp'] = dict(supported=False, reason='no MCP client')
+        g3 = copy.deepcopy(good['G3']); g3['cases']['mcp_remote_streaming']['result'] = 'not_supported'
+        write('G1', json.dumps(g1)); write('G3', json.dumps(g3))
+        assert {r['id']: r for r in A.evaluate_gate()}['G3']['met'], 'waiver from met G1 evidence rejected'
+        write('G1', json.dumps(dict(g1, tested_commit='e' * 40)))
+        assert not {r['id']: r for r in A.evaluate_gate()}['G3']['met'], 'waiver from invalid G1 evidence accepted'
+        A.unsupported_workflows = lambda: set()
         Path(tmp, items['G1']['evidence']).unlink()
         write('G2', '{not json')
         write('G3', json.dumps(dict(good['G3'], cases=list(good['G3']['cases']))))
