@@ -52,7 +52,7 @@ for n in EXPECTED:
         body = '\n'.join(texts(n))
         assert '未启动客户端' in body and '未覆盖' in body, (n, body)
         assert '示例' in body, f'{n}: screenshot evidence must be labelled as an example'
-assert '系统网络：等待状态' in texts('menu-network-waiting')
+assert '[disabled] 系统网络：等待状态' in texts('menu-network-waiting')
 assert any('可用（不是出口验证）' in t for t in texts('menu-network-available'))
 assert '[disabled] 检查 Claude 出口' in texts('menu-checking-claude') and '检查 Codex 出口' in texts('menu-checking-claude')
 assert texts('alert-claude-passed')[0] == 'Claude：预检通过' and texts('alert-codex-blocked')[0] == 'Codex：预检未通过'
