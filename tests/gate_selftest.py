@@ -192,6 +192,8 @@ with tempfile.TemporaryDirectory() as tmp:
         assert not ux_history(c4, c4), ux_history(c4, c4)
         assert any('被改过' in e for e in ux_history(c4, c5)), 'sign-off against an older checklist passed'
         assert any('不存在' in e for e in ux_history(c3, c4)), 'sign-off before the checklist existed passed'
+        # an unknown tested_commit is caught by provenance(), which evaluate_gate runs for every item including G6
+        assert any('不在仓库历史' in p for p in A.provenance(dict(good['G6'], tested_commit='e' * 40), c4))
     finally:
         A.GIT_ROOT = saved
 # evaluate_gate() itself, on a throwaway evidence root: good records are met (with the format-only note);
@@ -238,5 +240,5 @@ if not any((A.ROOT / i['evidence']).exists() for i in items.values()):
         run = lambda *f: subprocess.run([sys.executable, str(A.ROOT / 'tests/acceptance.py'), '--gate-only', *f],
                                         cwd=A.ROOT, env=env, capture_output=True).returncode
         assert run() == 0 and run('--require-gate') == 1, 'unmet gate must fail --require-gate'
-tail = ' and 7 history cases (stale, evidence-only, not-ancestor, unknown commit, 3 for the UX checklist), plus evaluate_gate on missing/malformed evidence'
+tail = ' and 8 history cases (stale, evidence-only, not-ancestor, unknown commit, 4 for the UX checklist), plus evaluate_gate on missing/malformed evidence'
 print(f'PASS: gate evaluators accept {len(good)} complete records, reject {len(bad)} weakened ones{tail}')

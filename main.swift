@@ -180,6 +180,13 @@ func makeMenu(target: AnyObject?, action: Selector?) -> NSMenu {
     return menu
 }
 
+/// Marks a provider's row as checking (greyed out) or idle and returns the matching tooltip. Used by runCheck and
+/// by --render-ui. Only takes effect because makeMenu() turns off autoenablesItems (tests/ux_screens.py checks that).
+func setChecking(_ row: NSMenuItem, _ on: Bool) -> String {
+    row.isEnabled = !on
+    return on ? checkingTooltip : idleTooltip
+}
+
 func makeAlert(_ result: Result) -> NSAlert {
     let alert = NSAlert()
     alert.messageText = "\(result.provider.capitalized)：\(result.status == "passed" ? "预检通过" : "预检未通过")"
@@ -222,17 +229,31 @@ final class MenuPicture: NSView {
 }
 
 /// The status item as it sits in the menu bar: the template icon tinted like the system does.
+/// The status item as it sits in the menu bar, with its tooltip drawn underneath (the system tooltip itself
+/// cannot be captured offscreen).
 final class MenuBarPicture: NSView {
-    let pose: Int
-    init(pose: Int) { self.pose = pose; super.init(frame: NSRect(x: 0, y: 0, width: 64, height: 24)) }
+    let pose: Int, tooltip: String
+    init(pose: Int, tooltip: String) {
+        self.pose = pose; self.tooltip = tooltip
+        super.init(frame: NSRect(x: 0, y: 0, width: 240, height: 56))
+    }
     required init?(coder: NSCoder) { nil }
+    override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
         NSColor.windowBackgroundColor.setFill(); bounds.fill()
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.toolTipsFont(ofSize: 0), .foregroundColor: NSColor.labelColor]
+        let text = tooltip as NSString
+        let size = text.size(withAttributes: attrs)
+        let bubble = NSRect(x: 8, y: 28, width: size.width + 12, height: size.height + 6)
+        let path = NSBezierPath(roundedRect: bubble, xRadius: 4, yRadius: 4)
+        NSColor.controlBackgroundColor.setFill(); path.fill(); NSColor.separatorColor.setStroke(); path.stroke()
+        text.draw(at: NSPoint(x: bubble.minX + 6, y: bubble.minY + 3), withAttributes: attrs)
         let icon = hachiIcon(size: 19, badge: false, pose: pose)
         let tinted = NSImage(size: icon.size, flipped: false) { rect in
             icon.draw(in: rect); NSColor.labelColor.set(); rect.fill(using: .sourceAtop); return true
         }
-        tinted.draw(in: NSRect(x: (bounds.width - 19) / 2, y: 2.5, width: 19, height: 19))
+        tinted.draw(in: NSRect(x: 14, y: 2.5, width: 19, height: 19), from: .zero, operation: .sourceOver,
+                    fraction: 1, respectFlipped: true, hints: nil)
     }
 }
 
@@ -269,15 +290,15 @@ func renderUI(into dir: URL) throws {
     }
     let example = "示例输出（截图用，不是真实预检结果）"
     let builders: [() -> (String, NSView, [String])] = [
-        { ("menubar-rest", MenuBarPicture(pose: 0), [idleTooltip]) },
-        { ("menubar-wag", MenuBarPicture(pose: maximumWagAngle), [idleTooltip]) },
-        { ("menubar-checking", MenuBarPicture(pose: 0), [checkingTooltip]) },
+        { ("menubar-rest", MenuBarPicture(pose: 0, tooltip: idleTooltip), [idleTooltip]) },
+        { ("menubar-wag", MenuBarPicture(pose: maximumWagAngle, tooltip: idleTooltip), [idleTooltip]) },
+        { ("menubar-checking", MenuBarPicture(pose: 0, tooltip: setChecking(NSMenuItem(), true)), [checkingTooltip]) },
         { menuState("menu-network-waiting") { _ in } },
         { menuState("menu-network-available") { $0.item(withTag: pathTag)?.title = networkTitle(satisfied: true) } },
         { menuState("menu-network-unavailable") { $0.item(withTag: pathTag)?.title = networkTitle(satisfied: false) } },
         { menuState("menu-checking-claude") { m in
             m.item(withTag: pathTag)?.title = networkTitle(satisfied: true)
-            m.items.first(where: { $0.representedObject as? String == "claude" })?.isEnabled = false } },
+            if let row = m.items.first(where: { $0.representedObject as? String == "claude" }) { _ = setChecking(row, true) } } },
         { alertState("alert-claude-passed", Result(provider: "claude", status: "passed", evidence: example)) },
         { alertState("alert-claude-blocked", Result(provider: "claude", status: "blocked", evidence: example)) },
         { alertState("alert-codex-passed", Result(provider: "codex", status: "passed", evidence: example)) },
@@ -295,6 +316,7 @@ func renderUI(into dir: URL) throws {
         }
     }
     let manifest: [String: Any] = ["states": states, "tooltips": ["idle": idleTooltip, "checking": checkingTooltip],
+                                   "menuAutoenablesItems": makeMenu(target: nil, action: nil).autoenablesItems,
                                    "note": "Menus are drawn from the real menu items; the system menu itself is not captured."]
     let data = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
     try data.write(to: dir.appendingPathComponent("ui-states.json"))
@@ -357,13 +379,11 @@ final class MenuAgent: NSObject, NSApplicationDelegate {
     }
     @objc func runCheck(_ sender: NSMenuItem) {
         guard let provider = sender.representedObject as? String else { return }
-        sender.isEnabled = false
-        item.button?.toolTip = checkingTooltip
+        item.button?.toolTip = setChecking(sender, true)
         DispatchQueue.global(qos: .userInitiated).async {
             let result = check(provider)
             DispatchQueue.main.async {
-                sender.isEnabled = true
-                self.item.button?.toolTip = idleTooltip
+                self.item.button?.toolTip = setChecking(sender, false)
                 NSApp.activate(ignoringOtherApps: true)
                 makeAlert(result).runModal()
             }

@@ -28,7 +28,7 @@ sign-off stale.
 - **UX-08** `检查 Claude 出口` with no `claude-safe` installed shows an alert `Claude：预检未通过` explaining the entry could not be run; the app does not hang or crash.
 - **UX-09** While a check runs, its row is greyed out and the tooltip reads `Hachi · 预检中`; afterwards the row is enabled again and the tooltip returns to normal.
 - **UX-10** With a synthetic `claude-safe` / `codex-safe` that exits 0 (pass) and one that exits non-zero (fail), each provider shows `预检通过` or `预检未通过` with its output, and every alert ends with the note that the client was not started and browser OAuth, MCP and in-flight interception are not covered.
-  A synthetic entry for this test: `mkdir -p ~/.local/bin && printf '#!/bin/sh\necho synthetic check\nexit 0\n' > ~/.local/bin/claude-safe && chmod +x ~/.local/bin/claude-safe` (use `exit 1` for the fail case). If you already have a real `claude-safe` there, move it aside first and restore it afterwards.
+  A synthetic entry for this test (it refuses to overwrite an existing file; if you have a real `claude-safe`, move it aside first and restore it afterwards): `f=~/.local/bin/claude-safe; [ -e "$f" ] && echo "exists, move it aside first" || { mkdir -p ~/.local/bin && printf '#!/bin/sh\necho synthetic check\nexit 0\n' > "$f" && chmod +x "$f"; }` (use `exit 1` for the fail case, and delete the file when done).
 - **UX-11** The alert comes to the front and is dismissed with Return or the OK button; focus returns to the previous app.
 
 ## Appearance and quitting

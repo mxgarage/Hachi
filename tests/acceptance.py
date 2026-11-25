@@ -378,6 +378,8 @@ def eval_ux_signoff(item, ev):
     ids = checklist_ids(doc) if repo_file(doc, ('docs/',)) else []
     if not ids:
         errs.append(f'{doc} 里没有清单项（- **UX-nn**）')
+    if len(set(ids)) != len(ids):
+        errs.append(f'{doc} 里有重复的清单 ID')
     checks = ev.get('checks')
     if not isinstance(checks, dict):
         checks = {}
@@ -403,13 +405,18 @@ def eval_ux_signoff(item, ev):
         errs.append('signed_off_at 必须是日期（YYYY-MM-DD）')
     # docs/ is not a product file, so the checklist's own history is checked here: it must have existed at
     # tested_commit and be unchanged since, otherwise the walkthrough was against a different list.
+    # (A malformed or unknown tested_commit is reported by common() / provenance(), which run for every item.)
     commit = str(ev.get('tested_commit', ''))
     if SHA.match(commit) and git('cat-file', '-e', f'{commit}^{{commit}}').returncode == 0:
         target = RELEASE_COMMIT or 'HEAD'
         if git('cat-file', '-e', f'{commit}:{doc}').returncode != 0:
             errs.append(f'{doc} 在 tested_commit 时还不存在')
-        elif git('diff', '--quiet', commit, target, '--', doc).returncode != 0:
-            errs.append(f'{doc} 在 tested_commit 之后被改过，需要按新清单重新走查')
+        else:
+            rc = git('diff', '--quiet', commit, target, '--', doc).returncode
+            if rc == 1:
+                errs.append(f'{doc} 在 tested_commit 之后被改过，需要按新清单重新走查')
+            elif rc:
+                errs.append(f'无法比较 {doc} 的历史（git diff 失败）')
     notes = [f'{len(ids) - len(missing) - len(failed)}/{len(ids)} 个清单项通过']
     if isinstance(who, str) and who.strip():
         notes.append(f'签字：{who.strip()} {ev.get("signed_off_at", "")}')

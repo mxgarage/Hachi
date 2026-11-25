@@ -36,11 +36,17 @@ for (name, look), s in states.items():
     w, h = png_size(out / s['file'])
     assert w >= 40 and h >= 20, f'{s["file"]} is only {w}x{h}'
     images[(name, look)] = (out / s['file']).read_bytes()
+# Only proves the appearance was applied (the background differs); readability in dark mode is UX-12 in the
+# manual checklist, not something this byte comparison shows.
 for name in EXPECTED:
     assert images[(name, 'light')] != images[(name, 'dark')], f'{name}: light and dark render identically'
+assert images[('menubar-checking', 'light')] != images[('menubar-rest', 'light')], 'checking tooltip not drawn'
+# runCheck greys out its row through setChecking(); that only works with manual enabling. The greyed row in the
+# screenshot is set by the renderer, so this flag is what ties the picture to the app's real behaviour.
+assert manifest['menuAutoenablesItems'] is False, 'menu autoenabling would ignore setChecking (row never greys out)'
 assert images[('menubar-rest', 'light')] != images[('menubar-wag', 'light')], 'tail pose does not change the icon'
 assert images[('menu-checking-claude', 'light')] != images[('menu-network-available', 'light')], \
-    'a check in progress must visibly disable its row'
+    'the greyed-out checking row must render differently'
 
 texts = lambda n: states[(n, 'light')]['texts']
 for n in EXPECTED:
