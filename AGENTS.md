@@ -18,7 +18,7 @@
 - 可以自动运行的：CI（`verify.yml`）、PR 评审（`claude-review.yml` 和 Codex，只评论）、代理按 issue 自动实现并开 PR（`claude.yml`：仓库成员/协作者（人类账号）给 issue 打 `claude` 标签，或发一条以 `@claude` 开头的评论；正文中间或引用里提到 @claude、bot 评论不触发，带 Claude Code 落款的代理代发评论按约定也不触发）、圆桌各轮由定时任务或评论触发。
 - 自动验收：`verify.yml` 每次运行 `tests/acceptance.py`（构建、测试、仓库卫生检查，并按 `release-gate.json` 评估发布门槛），报告写进 job summary，app 和报告作为产物上传。
 - 自迭代：`acceptance-backlog.yml` 每周和门槛/证据变化时运行，给每个未满足的门槛项保持一条 `acceptance` issue，格式检查通过后在 issue 里注明、由维护者确认并手动关闭，之后又不满足（例如证据过期）会重新打开。它不打 `claude` 标签；维护者看过后自己打标签，才会让 Claude 开始实现。
-- 发布：**推 `v*` tag 就等于发布**，`release.yml` 只接受维护者账号推的 tag。代理不得创建或推送任何 tag。无后缀 tag（`v0.2`）要求门槛全部满足，否则不发布；带后缀 tag（`v0.2-dev.1`）发预发布并标明未通过门槛。
+- 发布：**推 `v*` tag 就等于发布**，`release.yml` 只接受维护者账号推的 tag。代理不得创建或推送任何 tag。无后缀 tag（`v0.2`）要求门槛全部满足，否则不发布；带后缀 tag（`v0.2-dev.1`）发预发布并标明未通过门槛。真正创建 Release 的 job 绑定 `release` environment，需要在仓库设置里给它配审批人才会停下来等审批；没配时推 tag 会直接发布。
 - 不自动做的：合并、打 tag 和发布、改仓库设置和密钥。这些由维护者决定。
 - 不用真实 Claude/Codex/其他平台账号做故障实验。
 

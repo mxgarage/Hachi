@@ -81,8 +81,8 @@ jobs:
           retention-days: 7
   publish:
     needs: build
-    # 维护者可以在 Settings → Environments → release 里加 required reviewers，让发布需要审批；
-    # 免费组织的私有仓库可能用不了这个保护，那时"只由维护者推 tag"仍只是约定。
+    # 维护者决定（2026-11-25）：推 tag 自动发布，但要审批。审批靠 Settings → Environments → release 的
+    # required reviewers；没配好之前，这个 job 会不经审批直接发布（免费组织的私有仓库可能用不了这个保护）。
     environment: release
     runs-on: ubuntu-latest
     timeout-minutes: 5
