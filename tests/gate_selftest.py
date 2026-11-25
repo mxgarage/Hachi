@@ -111,6 +111,7 @@ bad = [
     ('G6', lambda e: e.pop('signed_off_at')),
     ('G6', lambda e: e.update(signed_off_at='2026-99-99xyz')),
     ('G6', lambda e: e.update(signed_off_at='2026-02-30')),
+    ('G6', lambda e: e.update(signed_off_at='2026-W01-1')),  # ISO week date, accepted by fromisoformat
     ('G6', lambda e: e.update(credentials='real_account')),
 ]
 

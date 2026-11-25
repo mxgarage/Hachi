@@ -367,11 +367,11 @@ def eval_network_extension(item, ev):
 CHECK_ID = re.compile(r'^- \*\*(UX-\d{2})\*\*', re.M)
 RUN_URL = re.compile(r'^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/actions/runs/\d+$')
 def iso_date(v):
+    """A real calendar date written exactly as YYYY-MM-DD (strptime rejects week dates such as 2026-W01-1)."""
     import datetime
     try:
-        datetime.date.fromisoformat(v)
-        return isinstance(v, str) and len(v) == 10
-    except (TypeError, ValueError):
+        return isinstance(v, str) and len(v) == 10 and bool(datetime.datetime.strptime(v, '%Y-%m-%d'))
+    except ValueError:
         return False
 
 def checklist_ids(path):
