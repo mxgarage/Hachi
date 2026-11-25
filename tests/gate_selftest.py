@@ -27,11 +27,11 @@ bad = [
     ('G1', lambda e: e['workflows']['cli'].update(attempts=60, successes=60)),  # 100% but lower bound 94%
     ('G1', lambda e: e['workflows'].pop('cli')),
     ('G1', lambda e: e['workflows']['desktop'].update(attempts=10, successes=10)),
+    ('G1', lambda e: e['workflows']['desktop'].update(attempts=72, successes=72)),  # lower bound 94.9%
     ('G1', lambda e: e['workflows'].__setitem__('mcp', dict(supported=False))),
     ('G1', lambda e: [e['workflows'].__setitem__(w, dict(supported=False, reason='n/a'))
                       for w in ('cli', 'browser_authorization', 'mcp')]),
     ('G1', lambda e: e.update(credentials='real_account')),
-    ('G1', lambda e: e.update(credentials='authorized_test')),  # only G4 may use authorized test credentials
     ('G1', lambda e: e['workflows'].__setitem__('cli', dict(supported=False, reason='n/a'))),  # cli is mandatory
     ('G1', lambda e: e['workflows']['desktop'].update(successes=401)),
     ('G1', lambda e: e['workflows']['desktop'].update(attempts=400.0)),
@@ -46,12 +46,14 @@ bad = [
     ('G2', lambda e: e.pop('control_route_changes')),
     ('G3', lambda e: e['cases'].pop('dns_ipv6')),
     ('G3', lambda e: e['cases']['inject_sleep_wake'].update(result='fail')),
+    ('G3', lambda e: e['cases']['dns_udp'].update(result='not_supported')),  # not an optional case
+    ('G3', lambda e: e['cases']['mcp_remote_streaming'].update(result='not_supported')),  # G1 evidence absent / mcp supported
     ('G4', lambda e: e.update(gaps_document='docs/missing.md')),
     ('G4', lambda e: e.update(gaps_document='README.md')),
     ('G4', lambda e: e.update(raw_results='evidence/README.md')),  # bare path without hash
     ('G4', lambda e: e.update(raw_results=dict(url='https://example.invalid/log', sha256='x'))),
     ('G4', lambda e: e['raw_results'].update(sha256='0' * 64)),  # hash does not match file
-    ('G4', lambda e: e.update(credentials='authorized_test')),  # without authorization_document
+    ('G4', lambda e: e.update(credentials='authorized_test')),  # no authorized-credential path
     ('G1', lambda e: e.update(matrix_preregistered='tests/not-yet-written.md')),
     ('G1', lambda e: e.update(tested_commit='f' * 40)),
     ('G5', lambda e: e.update(data_plane_tested=False)),
@@ -62,11 +64,11 @@ def problems(item_id, ev):
     errs, _ = A.EVALUATORS[items[item_id]['kind']](items[item_id], ev)
     return A.common(items[item_id], ev) + A.provenance(ev, None) + errs
 
+assert A.wilson_lower(73, 73) >= items['G1']['min_rate'] > A.wilson_lower(72, 72), 'min_attempts must be the smallest passing all-success count'
 # mcp is "where supported": it may be marked unsupported with a reason
 ev = copy.deepcopy(good['G1'])
 ev['workflows']['mcp'] = dict(supported=False, reason='no MCP client in this release')
 assert not problems('G1', ev), problems('G1', ev)
-assert not problems('G4', dict(good['G4'], credentials='authorized_test', authorization_document='docs/roundtable.md'))
 
 for item_id, ev in good.items():
     assert not problems(item_id, ev), (item_id, problems(item_id, ev))

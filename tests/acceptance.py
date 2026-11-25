@@ -105,7 +105,7 @@ def repo_file(rel, prefixes):
     path = (ROOT / rel).resolve()
     return path.is_relative_to(ROOT) and '..' not in Path(rel).parts and path.is_file()
 
-DEFAULT_CREDENTIALS = ('none', 'synthetic')
+DEFAULT_CREDENTIALS = ('none', 'synthetic')  # no authorized/live credentials path (AGENTS.md); adding one is a maintainer decision
 
 def common(item, ev):
     errs = []
@@ -127,8 +127,6 @@ def common(item, ev):
             errs.append('raw_results.sha256 与文件内容不符')
     elif not str(raw.get('url', '')).startswith('https://'):
         errs.append('raw_results.url 必须是 https 链接')
-    if ev.get('credentials') == 'authorized_test' and not repo_file(ev.get('authorization_document'), ('docs/',)):
-        errs.append('使用 authorized_test 时必须给出 docs/ 下的 authorization_document（谁授权、授权范围、专用测试凭据，而非用户的平台账号）')
     return errs
 
 PRODUCT_FILES = ['main.swift', 'build.py']
@@ -207,16 +205,39 @@ def eval_critical_failures(item, ev):
             errs.append(f'{key} = {ev[key]!r}（必须是整数 0）')
     return errs, [f'观察器：{obs.get("kind", "?")}']
 
+def unsupported_workflows():
+    """Workflows that G1 evidence marks unsupported (only optional ones count, see eval_workflow_success)."""
+    g1 = next(i for i in MANIFEST['items'] if i['kind'] == 'workflow_success')
+    try:
+        flows = json.loads((ROOT / g1['evidence']).read_text(encoding='utf-8')).get('workflows', {})
+    except (OSError, ValueError, AttributeError):
+        return set()
+    return {n for n in g1.get('optional_workflows', []) if isinstance(flows.get(n), dict) and flows[n].get('supported') is False}
+
 def eval_lab_cases(item, ev):
     cases = ev.get('cases', {})
-    missing = [c for c in item['cases'] if c not in cases]
-    failed = [c for c in item['cases'] if c in cases and cases[c].get('result') != 'pass']
+    skip_ok = unsupported_workflows()
+    missing, failed, skipped = [], [], []
+    for c in item['cases']:
+        result = cases.get(c, {}).get('result') if isinstance(cases.get(c), dict) else None
+        if result == 'pass':
+            continue
+        workflow = item.get('optional_cases', {}).get(c)
+        if result == 'not_supported' and workflow in skip_ok:
+            skipped.append(c)  # consistent with G1 marking this optional workflow unsupported
+        elif c not in cases:
+            missing.append(c)
+        else:
+            failed.append(c)
     errs = []
     if missing:
         errs.append('缺用例：' + ', '.join(missing))
     if failed:
-        errs.append('未通过：' + ', '.join(failed))
-    return errs, [f'{len(item["cases"]) - len(missing) - len(failed)}/{len(item["cases"])} 个用例通过']
+        errs.append('未通过（not_supported 只允许用于 G1 里也标为不支持的可选工作流）：' + ', '.join(failed))
+    notes = [f'{len(item["cases"]) - len(missing) - len(failed) - len(skipped)}/{len(item["cases"])} 个用例通过']
+    if skipped:
+        notes.append('不支持（与 G1 一致）：' + ', '.join(skipped))
+    return errs, notes
 
 def eval_transfer(item, ev):
     errs = []
@@ -241,10 +262,11 @@ def eval_network_extension(item, ev):
 EVALUATORS = dict(workflow_success=eval_workflow_success, critical_failures=eval_critical_failures,
                   lab_cases=eval_lab_cases, transfer=eval_transfer, network_extension=eval_network_extension)
 
+MANIFEST = json.loads((ROOT / 'release-gate.json').read_text(encoding='utf-8'))
+
 def evaluate_gate(release_commit=None):
-    manifest = json.loads((ROOT / 'release-gate.json').read_text(encoding='utf-8'))
     results = []
-    for item in manifest['items']:
+    for item in MANIFEST['items']:
         path = ROOT / item['evidence']
         if not path.is_file():
             errs, notes = [f'没有证据文件 {item["evidence"]}'], []
