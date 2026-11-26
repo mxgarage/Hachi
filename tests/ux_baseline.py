@@ -173,7 +173,8 @@ def environment():
             'macos': run(['sw_vers', '-productVersion']) or platform.platform(),
             'arch': platform.machine()}
 
-def compare():
+def compare(current=None, baseline=None, out=None):
+    CURRENT, BASELINE, DIFF, CANDIDATE = _dirs(current, baseline, out)
     states = json.loads((CURRENT / 'ui-states.json').read_text(encoding='utf-8'))['states']
     files = sorted(s['file'] for s in states)
     for d in (DIFF, CANDIDATE):
@@ -197,7 +198,11 @@ def compare():
         if f not in stored:
             problems.append(f'{f}: no baseline')
             continue
-        base, cur = read_png(BASELINE / f), read_png(CURRENT / f)
+        try:
+            base, cur = read_png(BASELINE / f), read_png(CURRENT / f)
+        except Exception as e:  # a damaged or missing file is a difference, and the report is still written
+            problems.append(f'{f}: cannot read ({e})')
+            continue
         if base[:2] != cur[:2]:
             changed, why = None, f'size {base[0]}x{base[1]} -> {cur[0]}x{cur[1]}'
         else:
@@ -243,16 +248,16 @@ def compare():
     print('If the change is intended, replace tests/ux-baseline/ with acceptance/ux-candidate-baseline/ from the '
           'artifact, or run: python3 tests/ux_baseline.py --import-log <this job log>')
     if os.environ.get('GITHUB_ACTIONS') == 'true':
-        print_bundle()
-    print(f'FAIL: {len(problems)} of {len(files)} UX screenshots differ from the baseline')
+        print_bundle(CANDIDATE)
+    print(f'FAIL: {len(problems)} differences between {len(files)} UX screenshots and the baseline')
     return 1
 
 # ---------- baseline transport ----------
 
-def print_bundle():
+def print_bundle(candidate):
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode='w:gz') as tar:
-        for p in sorted(CANDIDATE.iterdir()):
+        for p in sorted(candidate.iterdir()):
             tar.add(p, arcname=p.name)
     blob = buf.getvalue()
     text = base64.b64encode(blob).decode()
@@ -276,6 +281,11 @@ def replace_baseline(src_dir):
         shutil.copy2(src_dir / f, BASELINE / f)
     print(f'baseline replaced: {len(names)} screenshots in {BASELINE.relative_to(ROOT)}/ — review them before committing')
 
+def _dirs(current, baseline, out):
+    out = Path(out) if out else OUT
+    return (Path(current) if current else CURRENT, Path(baseline) if baseline else BASELINE,
+            out / 'ux-diff', out / 'ux-candidate-baseline')
+
 def import_log(log):
     stamp = re.compile(r'^\d{4}-\d\d-\d\dT[\d:.]+Z ')
     lines = [stamp.sub('', l.rstrip('\r\n')) for l in Path(log).read_text(encoding='utf-8', errors='replace').splitlines()]
@@ -283,9 +293,14 @@ def import_log(log):
     if not starts:
         raise SystemExit(f'no {BEGIN} in {log}')
     i = starts[-1]
-    want = lines[i].split('sha256=')[1].strip()
-    j = lines.index(END, i)
-    blob = base64.b64decode(''.join(lines[i + 1:j]))
+    m = re.fullmatch(re.escape(BEGIN) + r' sha256=([0-9a-f]{64})', lines[i].strip())
+    if not m or END not in lines[i:]:
+        raise SystemExit('bundle in the log is incomplete (no checksum or no end marker); download the whole log again')
+    want, j = m.group(1), lines.index(END, i)
+    try:
+        blob = base64.b64decode(''.join(lines[i + 1:j]), validate=True)
+    except ValueError:
+        raise SystemExit('bundle in the log is not valid base64; download the whole log again')
     if hashlib.sha256(blob).hexdigest() != want:
         raise SystemExit('bundle checksum mismatch; download the log again')
     tmp = OUT / 'ux-imported'
@@ -332,8 +347,47 @@ def selftest():
     assert changed_pixels(a, a) == [] and changed_pixels(a, bytes(b)) == [8], 'one changed pixel is found'
     W, H, px = diff_image((w, h, a), (w, h, bytes(b)), [8])
     assert (W, H) == (3 * w + 16, h) and px[(1 * W + 2 * (w + 8) + 1) * 4:][:4] == b'\xff\x00\xff\xff', 'diff marks it'
+    # other colour types and 16-bit samples decode to the same RGBA
+    grey = bytes(v for y in range(h) for v in range(y, y + w))
+    for ctype, depth, rows, want in [
+            (0, 8, [grey[y * w:(y + 1) * w] for y in range(h)], b''.join(bytes((v, v, v, 255)) for v in grey)),
+            (2, 8, [b''.join(a[(y * w + x) * 4:(y * w + x) * 4 + 3] for x in range(w)) for y in range(h)], a),
+            (6, 16, [bytes(b for c in a[y * w * 4:(y + 1) * w * 4] for b in (c, 7)) for y in range(h)], a)]:
+        raw = b''.join(b'\x00' + r for r in rows)
+        crc = lambda k, b: struct.pack('>I', len(b)) + k + b + struct.pack('>I', zlib.crc32(k + b) & 0xffffffff)
+        (tmp / 't.png').write_bytes(b'\x89PNG\r\n\x1a\n' + crc(b'IHDR', struct.pack('>IIBBBBB', w, h, depth, ctype, 0, 0, 0))
+                                    + crc(b'IDAT', zlib.compress(raw)) + crc(b'IEND', b''))
+        assert read_png(tmp / 't.png') == (w, h, want), f'colour type {ctype}, depth {depth}'
+    # compare(): match, changed pixel, size change, missing, stale and unreadable baselines, report always written
+    cur, base, out = tmp / 'cur', tmp / 'base', tmp / 'out'
+    cur.mkdir(); base.mkdir()
+    names = ['same-light.png', 'pixel-light.png', 'size-light.png', 'new-light.png', 'broken-light.png']
+    for n in names:
+        write_png(cur / n, w, h, a)
+    (cur / 'ui-states.json').write_text(json.dumps({'states': [{'file': n} for n in names]}))
+    write_png(base / 'same-light.png', w, h, a)
+    write_png(base / 'pixel-light.png', w, h, bytes(b))
+    write_png(base / 'size-light.png', w + 1, h, a + a[:h * 4])
+    (base / 'broken-light.png').write_bytes(b'not a png')
+    write_png(base / 'gone-light.png', w, h, a)
+    import contextlib
+    with contextlib.redirect_stdout(io.StringIO()) as log:
+        rc = compare(cur, base, out)  # in CI this also prints the (small) bundle into the captured text
+    text = log.getvalue()
+    assert rc == 1 and 'same-light.png' not in text, text
+    for n, why in [('pixel-light.png', '1 pixels changed'), ('size-light.png', 'size 8x5 -> 7x5'),
+                   ('new-light.png', 'no baseline'), ('broken-light.png', 'cannot read'),
+                   ('gone-light.png', 'baseline for a state that is no longer rendered')]:
+        assert f'{n}: {why}' in text, (n, text)
+    assert (out / 'ux-diff' / 'index.html').is_file() and (out / 'ux-diff' / 'pixel-light-diff.png').is_file()
+    assert sorted(p.name for p in (out / 'ux-candidate-baseline').glob('*.png')) == sorted(names)
+    for n in names:
+        write_png(base / n, w, h, a)
+    (base / 'gone-light.png').unlink()
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert compare(cur, base, out) == 0, 'identical sets pass'
     shutil.rmtree(tmp)
-    print('PASS: PNG reader/writer (filters 0-4) and pixel diff')
+    print('PASS: PNG reader/writer (filters 0-4, grey/RGB/16-bit), pixel diff, and compare() on every outcome')
 
 def main():
     ap = argparse.ArgumentParser()
