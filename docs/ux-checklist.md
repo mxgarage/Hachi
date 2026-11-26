@@ -3,8 +3,15 @@
 The maintainer walks through every item on a real Mac, on the commit being released, and records the result in
 `evidence/G6-ux-signoff.json` (see `evidence/README.md`). CI renders every menu-bar, menu and alert state in light
 and dark appearance (`tests/ux_screens.py`, artifact `hachi-<sha>` → `acceptance/ux/index.html`); use those
-screenshots to compare against what you see. CI draws the menu from the real menu items, so it cannot show how the
-system menu bar itself looks or behaves. That part is only covered by this walkthrough.
+screenshots to compare against what you see. CI also compares every screenshot pixel for pixel with the stored
+baseline in `tests/ux-baseline/` (`tests/ux_baseline.py`) and fails on any difference, with diff images in
+`acceptance/ux-diff/index.html`. That only proves nothing changed by accident since the baseline was accepted; it
+does not prove the screens are right, and it does not replace this walkthrough or the maintainer's sign-off. Two things in the screenshots are not what the running app does: the alert icon is drawn directly from the
+artwork (the app shows its app icon, built from the same artwork), and the precheck text in alerts is a hand-written
+example, not output from a real `claude-safe` / `codex-safe`. Every screenshot sits on the plain window background,
+so menus show no translucent material. Check the real alert icon and menu background during UX-08 to UX-12. CI
+draws the menu from the real menu items, so it cannot show how the system menu bar itself looks or behaves. That
+part is only covered by this walkthrough.
 
 Each item has an ID; the evidence needs a `pass` for every ID below. If an item fails, open an issue for it (it can
 be labelled `claude`) and sign off again once it is fixed. Changing this file after `tested_commit` makes the
@@ -27,7 +34,7 @@ sign-off stale.
 
 - **UX-08** `检查 Claude 出口` with no `claude-safe` installed shows an alert `Claude：预检未通过` explaining the entry could not be run; the app does not hang or crash.
 - **UX-09** While a check runs, its row is greyed out and the tooltip reads `Hachi · 预检中`; afterwards the row is enabled again and the tooltip returns to normal.
-- **UX-10** With a synthetic `claude-safe` / `codex-safe` that exits 0 (pass) and one that exits non-zero (fail), each provider shows `预检通过` or `预检未通过` with its output, and every alert ends with the note that the client was not started and browser OAuth, MCP and in-flight interception are not covered.
+- **UX-10** With a synthetic `claude-safe` / `codex-safe` that exits 0 (pass) and one that exits non-zero (fail), each provider shows `预检通过` or `预检未通过` with its output, and every alert ends with the note that this is a precheck only (the client was not started, which is not the failure reason) and that browser OAuth, MCP and in-flight interception are not covered. A failed result also says that Hachi only relays the entry's output and that the failure is not necessarily about the IP (for example `observed_route=NOT OBSERVED`); that second sentence only appears when the entry's output contains `expected=` (a synthetic entry that prints just `synthetic check` gets only the first sentence).
   A synthetic entry for this test (it refuses to overwrite an existing file; if you have a real `claude-safe`, move it aside first and restore it afterwards): `f=~/.local/bin/claude-safe; [ -e "$f" ] && echo "exists, move it aside first" || { mkdir -p ~/.local/bin && printf '#!/bin/sh\necho synthetic check\nexit 0\n' > "$f" && chmod +x "$f"; }` (use `exit 1` for the fail case, and delete the file when done).
 - **UX-11** The alert comes to the front and is dismissed with Return or the OK button; focus returns to the previous app.
 

@@ -118,10 +118,12 @@ private extension NSBezierPath {
     }
 }
 
-struct Result: Codable {
+struct Result: Encodable {
     let provider: String
     let status: String
     let evidence: String
+    /// false when the entry could not be started at all (not part of the JSON output).
+    let entryRan: Bool
     let mode = "preflight_only"
     let browserOAuth = "not_covered"
     let mcp = "not_covered"
@@ -132,8 +134,8 @@ struct Result: Codable {
         try c.encode(evidence, forKey: .evidence); try c.encode(mode, forKey: .mode)
         try c.encode(browserOAuth, forKey: .browserOAuth); try c.encode(mcp, forKey: .mcp)
     }
-    init(provider: String, status: String, evidence: String) {
-        self.provider = provider; self.status = status; self.evidence = evidence
+    init(provider: String, status: String, evidence: String, entryRan: Bool = true) {
+        self.provider = provider; self.status = status; self.evidence = evidence; self.entryRan = entryRan
     }
 }
 
@@ -155,7 +157,7 @@ func runEntry(_ entry: URL, provider: String) -> Result {
         return Result(provider: provider, status: process.terminationStatus == 0 ? "passed" : "blocked",
                       evidence: String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
     } catch {
-        return Result(provider: provider, status: "blocked", evidence: "无法运行预检入口：\(error.localizedDescription)")
+        return Result(provider: provider, status: "blocked", evidence: "无法运行预检入口：\(error.localizedDescription)", entryRan: false)
     }
 }
 
@@ -194,7 +196,17 @@ func setChecking(_ row: NSMenuItem, _ on: Bool) -> String {
 func makeAlert(_ result: Result) -> NSAlert {
     let alert = NSAlert()
     alert.messageText = "\(result.provider.capitalized)：\(result.status == "passed" ? "预检通过" : "预检未通过")"
-    alert.informativeText = result.evidence + "\n\n未启动客户端。浏览器 OAuth、MCP 和运行中拦截未覆盖。"
+    // "Blocked" only means the entry exited non-zero; Hachi cannot tell which of its checks failed. Say so, because a
+    // matching IP with observed_route=NOT OBSERVED (the entry's own output) reads like a contradiction otherwise.
+    var hint = ""
+    if result.status != "passed" && result.entryRan {
+        hint = "\n\n“未通过”表示预检入口返回了失败，Hachi 只转述它的输出，不判断原因。"
+        if result.evidence.contains("expected=") {  // only when the output has the fields the sentence talks about
+            hint += "未通过不一定是 IP 的问题：请看输出里哪一项没满足，例如 IP 与 expected 不同，或 observed_route=NOT OBSERVED（没有观察到预期路由）。"
+        }
+    }
+    alert.informativeText = result.evidence + hint
+        + "\n\n这只是预检：Hachi 没有启动客户端（“未启动客户端”不是失败原因）。浏览器 OAuth、MCP 和运行中拦截未覆盖。"
     return alert
 }
 
@@ -269,7 +281,19 @@ func savePNG(_ view: NSView, appearance: NSAppearance, to url: URL) throws {
             failure = CocoaError(.fileWriteUnknown); return
         }
         view.cacheDisplay(in: view.bounds, to: rep)
-        guard let png = rep.representation(using: .png, properties: [:]) else { failure = CocoaError(.fileWriteUnknown); return }
+        // An alert's content view is transparent (the window draws its background), so a bare capture shows dark-mode
+        // text on nothing: white on white in any viewer. Put the window background under every screenshot.
+        guard let flat = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: rep.pixelsWide, pixelsHigh: rep.pixelsHigh,
+                                          bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                          colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: flat) else { failure = CocoaError(.fileWriteUnknown); return }
+        flat.size = rep.size  // keep the point size (and so the PNG's DPI) of the original capture
+        NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = context
+        let full = NSRect(x: 0, y: 0, width: rep.pixelsWide, height: rep.pixelsHigh)
+        NSColor.windowBackgroundColor.setFill(); full.fill()
+        rep.draw(in: full, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+        NSGraphicsContext.restoreGraphicsState()
+        guard let png = flat.representation(using: .png, properties: [:]) else { failure = CocoaError(.fileWriteUnknown); return }
         do { try png.write(to: url) } catch { failure = error }
     }
     if let failure { throw failure }
@@ -298,10 +322,25 @@ func renderUI(into dir: URL) throws {
         return (name, MenuPicture(menu), texts)
     }
     func alertState(_ name: String, _ result: Result) -> (String, NSView, [String]) {
-        let alert = makeAlert(result); alert.layout()
+        let alert = makeAlert(result)
+        // The default alert icon (the app icon) is loaded asynchronously and is sometimes still a placeholder when
+        // drawn offscreen; draw the same artwork synchronously so the screenshots are stable. The running app keeps the
+        // default (the app icon, Hachi.icns, rendered from this same hachiIcon(badge: true) by build.py).
+        alert.icon = hachiIcon(size: 128, badge: true)
+        alert.layout()
         return (name, alert.window.contentView!, [alert.messageText, alert.informativeText])
     }
-    let example = "示例输出（截图用，不是真实预检结果）"
+    // Hand-written after a real claude-safe --check-only dialog the maintainer shared (2026-11-25), so the screenshots
+    // show how a long, multi-line result wraps. The entry scripts are not in this repo, so nothing checks that their
+    // output still looks like this. Documentation addresses only (RFC 5737); labelled as an example in the alert.
+    func example(_ host: String, passed: Bool) -> String {
+        let ip = passed ? "203.0.113.10" : "198.51.100.7"
+        let verdict = passed
+            ? "PASS = these sampled requests matched expected IP and route only; not proof of kill switch, future requests, app coverage, or account safety."
+            : "BLOCKED = the sampled exit IP did not match expected; the client was not started."
+        return "示例输出（截图用，不是真实预检结果）\n\(host): \(passed ? "PASS" : "BLOCKED"); IP=\(ip); expected=203.0.113.10; "
+            + "trace=200 TLS=0; observed_route=\(passed ? "example-chain" : "unexpected")\n\(verdict)\nCHECK-ONLY: 未启动客户端"
+    }
     let builders: [() -> (String, NSView, [String])] = [
         { ("menubar-rest", MenuBarPicture(pose: 0, tooltip: idleTooltip), [idleTooltip]) },
         { ("menubar-wag", MenuBarPicture(pose: maximumWagAngle, tooltip: idleTooltip), [idleTooltip]) },
@@ -312,10 +351,10 @@ func renderUI(into dir: URL) throws {
         { menuState("menu-checking-claude") { m in
             m.item(withTag: pathTag)?.title = networkTitle(satisfied: true)
             if let row = m.items.first(where: { $0.representedObject as? String == "claude" }) { _ = setChecking(row, true) } } },
-        { alertState("alert-claude-passed", Result(provider: "claude", status: "passed", evidence: example)) },
-        { alertState("alert-claude-blocked", Result(provider: "claude", status: "blocked", evidence: example)) },
-        { alertState("alert-codex-passed", Result(provider: "codex", status: "passed", evidence: example)) },
-        { alertState("alert-codex-blocked", Result(provider: "codex", status: "blocked", evidence: example)) },
+        { alertState("alert-claude-passed", Result(provider: "claude", status: "passed", evidence: example("claude.ai", passed: true))) },
+        { alertState("alert-claude-blocked", Result(provider: "claude", status: "blocked", evidence: example("claude.ai", passed: false))) },
+        { alertState("alert-codex-passed", Result(provider: "codex", status: "passed", evidence: example("chatgpt.com", passed: true))) },
+        { alertState("alert-codex-blocked", Result(provider: "codex", status: "blocked", evidence: example("chatgpt.com", passed: false))) },
         // the real failure path: run an entry that does not exist, as check() does when claude-safe is missing
         { alertState("alert-entry-missing", runEntry(dir.appendingPathComponent("missing/claude-safe"), provider: "claude")) },
     ]

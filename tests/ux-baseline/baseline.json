@@ -1,0 +1,32 @@
+{
+  "runner_image": "macos15 20261118.0550.1",
+  "macos": "15.8.2",
+  "arch": "arm64",
+  "rendered_at_commit": "879a42dbea4bf467548b1f80174cfd656f134c55",
+  "files": [
+    "alert-claude-blocked-dark.png",
+    "alert-claude-blocked-light.png",
+    "alert-claude-passed-dark.png",
+    "alert-claude-passed-light.png",
+    "alert-codex-blocked-dark.png",
+    "alert-codex-blocked-light.png",
+    "alert-codex-passed-dark.png",
+    "alert-codex-passed-light.png",
+    "alert-entry-missing-dark.png",
+    "alert-entry-missing-light.png",
+    "menu-checking-claude-dark.png",
+    "menu-checking-claude-light.png",
+    "menu-network-available-dark.png",
+    "menu-network-available-light.png",
+    "menu-network-unavailable-dark.png",
+    "menu-network-unavailable-light.png",
+    "menu-network-waiting-dark.png",
+    "menu-network-waiting-light.png",
+    "menubar-checking-dark.png",
+    "menubar-checking-light.png",
+    "menubar-rest-dark.png",
+    "menubar-rest-light.png",
+    "menubar-wag-dark.png",
+    "menubar-wag-light.png"
+  ]
+}
