@@ -61,9 +61,12 @@ jobs:
         run: |
           set -euo pipefail
           re='^v[0-9][0-9A-Za-z.-]*$'
-          existing_sha() {  # commit of an existing tag, empty if there is none
-            local obj type
-            obj=$(gh api "repos/$GH_REPO/git/ref/tags/$1" --jq '.object.sha+" "+.object.type' 2>/dev/null) || return 0
+          existing_sha() {  # commit of an existing tag; empty if there is none (404). Any other error aborts the run.
+            local obj type err
+            if ! obj=$(gh api "repos/$GH_REPO/git/ref/tags/$1" --jq '.object.sha+" "+.object.type' 2>&1); then
+              if grep -q 'Not Found\|HTTP 404' <<<"$obj"; then return 0; fi
+              echo "::error::could not look up tag $1: $obj" >&2; return 1
+            fi
             type=${obj#* }; obj=${obj%% *}
             if [ "$type" = tag ]; then obj=$(gh api "repos/$GH_REPO/git/tags/$obj" --jq .object.sha); fi
             echo "$obj"
@@ -92,7 +95,8 @@ jobs:
             echo "Suggested next version: $tag (after $last)" >> "$GITHUB_STEP_SUMMARY"
           fi
           [[ "$tag" =~ $re ]] || { echo "::error::$tag is not a valid tag (v<version>[-suffix])"; exit 1; }
-          if [ -n "$(existing_sha "$tag")" ]; then
+          found=$(existing_sha "$tag")  # a failed lookup (not 404) stops the run here
+          if [ -n "$found" ]; then
             if [ "$EVENT" = push ]; then echo "Tag $tag already exists; nothing to release."; emit "" "$SHA" true; exit 0; fi
             echo "::error::tag $tag already exists; use the 'tag' input to re-attach files to it"; exit 1
           fi
