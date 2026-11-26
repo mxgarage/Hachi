@@ -31,9 +31,6 @@ on:
         required: false
 permissions:
   contents: read
-concurrency:
-  group: release-${{ inputs.tag || inputs.version || github.ref_name }}
-  cancel-in-progress: false
 jobs:
   prepare:
     # 发布只接受维护者账号触发的运行；Claude GitHub App（claude[bot]）等其他主体的运行直接跳过（build 依赖本 job，随之跳过）。
@@ -82,9 +79,13 @@ jobs:
           # From here on a new tag is created, on the commit of this run, which must be on main.
           [ "$REF_NAME" = main ] || { echo "::error::new versions are released from main only (this run is on $REF_NAME)"; exit 1; }
           if [ "$EVENT" = push ]; then  # a merge that added docs/release-notes/v*.md
-            file=$(gh api "repos/$GH_REPO/commits/$SHA" --jq '.files[]|select(.status=="added")|.filename' \
-              | grep -E '^docs/release-notes/v[0-9][0-9A-Za-z.-]*\.md$' | head -n 1 || true)
-            if [ -z "$file" ]; then echo "No new release-notes file in this push; nothing to release."; emit "" "$SHA" true; exit 0; fi
+            files=$(gh api "repos/$GH_REPO/commits/$SHA" --jq '.files[]|select(.status=="added")|.filename' \
+              | grep -E '^docs/release-notes/v[0-9][0-9A-Za-z.-]*\.md$' || true)
+            if [ -z "$files" ]; then echo "No new release-notes file in this push; nothing to release."; emit "" "$SHA" true; exit 0; fi
+            if [ "$(wc -l <<<"$files")" -gt 1 ]; then
+              echo "::error::this push adds more than one release-notes file; add one version per merge:"$'\n'"$files"; exit 1
+            fi
+            file=$files
             tag=$(basename "$file" .md)
           elif [ -n "$IN_VERSION" ]; then
             tag=$IN_VERSION
@@ -104,6 +105,11 @@ jobs:
   build:
     needs: prepare
     if: needs.prepare.outputs.skip != 'true'
+    # One build per tag at a time (a group queues at most one waiting run, so keying it on the tag, not on the branch,
+    # keeps two merged release-notes files from replacing each other).
+    concurrency:
+      group: release-build-${{ needs.prepare.outputs.tag }}
+      cancel-in-progress: false
     runs-on: macos-15
     timeout-minutes: 20
     env:
@@ -203,6 +209,9 @@ jobs:
     # required reviewers。失败时关闭：如果读不到这个审批规则（没配，或这个套餐用不了），只建 draft release，
     # 由维护者在 Releases 页面手动发布。
     environment: release
+    concurrency:
+      group: release-publish-${{ needs.build.outputs.tag }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
