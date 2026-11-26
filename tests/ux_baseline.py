@@ -1,7 +1,9 @@
 """UX screenshot regression: compare every screenshot from tests/ux_screens.py with the stored baseline in
 tests/ux-baseline/ and fail on any difference.
 
-  python3 tests/ux_baseline.py                  # compare build/acceptance/ux/ with tests/ux-baseline/
+  python3 tests/ux_baseline.py                  # in CI: compare build/acceptance/ux/ with tests/ux-baseline/
+                                                # elsewhere: self-test only, comparison skipped (see below)
+  python3 tests/ux_baseline.py --compare-locally  # compare off CI anyway; expected to differ
   python3 tests/ux_baseline.py --selftest       # check the PNG reader/writer and the diff (any OS)
   python3 tests/ux_baseline.py --import-log LOG # take a new baseline from a CI job log (see below)
 
@@ -394,13 +396,21 @@ def main():
     g = ap.add_mutually_exclusive_group()
     g.add_argument('--selftest', action='store_true')
     g.add_argument('--import-log', metavar='LOG')
+    g.add_argument('--compare-locally', action='store_true', help='compare off CI anyway (expected to differ)')
     args = ap.parse_args()
     if args.import_log:
         import_log(args.import_log)
-    else:
-        selftest()
-        if not args.selftest:
-            sys.exit(compare())
+        return
+    selftest()
+    if args.selftest:
+        return
+    if os.environ.get('GITHUB_ACTIONS') != 'true' and not args.compare_locally:
+        # The baseline is rendered by the CI runner; any other Mac differs in scale, fonts or OS, so a local
+        # comparison would always fail without saying anything about Hachi.
+        print('SKIP: pixel comparison runs only in CI (the baseline comes from the CI runner); '
+              'pass --compare-locally to see the local diff anyway')
+        return
+    sys.exit(compare())
 
 if __name__ == '__main__':
     main()

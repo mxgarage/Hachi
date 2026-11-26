@@ -5,7 +5,8 @@ name here, pixel for pixel, and fails on any difference. `baseline.json` records
 and commit the baseline was rendered at.
 
 These files always come from the CI runner (`macos-15`), never from a developer Mac: scale, fonts and OS version
-differ, so a local render would never match.
+differ, so a local render would never match. For that reason `tests/ux_baseline.py` (and so `tests/acceptance.py`)
+skips the comparison outside GitHub Actions and only runs its self-test; `--compare-locally` compares anyway.
 
 This is a convention, not something CI can enforce. `baseline.json` is self-reported, the bundle checksum only
 proves the transfer was intact, and CI compares against whatever baseline the PR itself carries, so a PR that
