@@ -202,7 +202,7 @@ func makeAlert(_ result: Result) -> NSAlert {
     if result.status != "passed" && result.entryRan {
         hint = "\n\n“未通过”表示预检入口返回了失败，Hachi 只转述它的输出，不判断原因。"
         if result.evidence.contains("expected=") {  // only when the output has the fields the sentence talks about
-            hint += "IP 与 expected 一致也可能未通过：请看输出里哪一项没满足，例如 observed_route=NOT OBSERVED 表示没有观察到预期路由。"
+            hint += "未通过不一定是 IP 的问题：请看输出里哪一项没满足，例如 IP 与 expected 不同，或 observed_route=NOT OBSERVED（没有观察到预期路由）。"
         }
     }
     alert.informativeText = result.evidence + hint

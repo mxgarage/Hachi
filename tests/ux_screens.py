@@ -79,7 +79,7 @@ for n in ('alert-claude-passed', 'alert-claude-blocked', 'alert-codex-passed', '
 for n in ('alert-claude-blocked', 'alert-codex-blocked'):
     # The hint is fixed wording about the entry's (external) output format; the fixture does not claim to reproduce
     # a matching IP with NOT OBSERVED, so this only checks that the hint and the footer are present.
-    assert '没有观察到预期路由' in texts(n)[1] and 'IP 与 expected 一致也可能未通过' in texts(n)[1], n
+    assert '没有观察到预期路由' in texts(n)[1] and '未通过不一定是 IP 的问题' in texts(n)[1], n
     assert '不是失败原因' in texts(n)[1], n
 assert '没有观察到预期路由' not in texts('alert-claude-passed')[1] and '没有观察到预期路由' not in texts('alert-entry-missing')[1]
 assert texts('alert-claude-passed')[0] == 'Claude：预检通过' and texts('alert-codex-blocked')[0] == 'Codex：预检未通过'
