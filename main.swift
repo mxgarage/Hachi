@@ -200,7 +200,10 @@ func makeAlert(_ result: Result) -> NSAlert {
     // matching IP with observed_route=NOT OBSERVED (the entry's own output) reads like a contradiction otherwise.
     var hint = ""
     if result.status != "passed" && result.entryRan {
-        hint = "\n\n“未通过”表示预检入口返回了失败，Hachi 只转述它的输出，不判断原因。IP 与 expected 一致也可能未通过：请看输出里哪一项没满足，例如 observed_route=NOT OBSERVED 表示没有观察到预期路由。"
+        hint = "\n\n“未通过”表示预检入口返回了失败，Hachi 只转述它的输出，不判断原因。"
+        if result.evidence.contains("expected=") {  // only when the output has the fields the sentence talks about
+            hint += "IP 与 expected 一致也可能未通过：请看输出里哪一项没满足，例如 observed_route=NOT OBSERVED 表示没有观察到预期路由。"
+        }
     }
     alert.informativeText = result.evidence + hint
         + "\n\n这只是预检：Hachi 没有启动客户端（“未启动客户端”不是失败原因）。浏览器 OAuth、MCP 和运行中拦截未覆盖。"
