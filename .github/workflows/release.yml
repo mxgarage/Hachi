@@ -1,5 +1,11 @@
 name: Release
-# 只由维护者推 tag 触发；代理不打 tag、不发布（AGENTS.md）。
+# 只由维护者触发；代理不打 tag、不发布（AGENTS.md）。三种触发方式（都要求操作者是维护者账号）：
+#   1) 维护者合并一个新增 docs/release-notes/v<版本>.md 的 PR（合并就是批准）：自动用文件名当 tag，在这次合并的提交上
+#      构建、创建 tag 和 release（正文 = 这份说明 + 验收报告）。已存在的 tag 不会重复发布，只改旧说明文件也不会触发。
+#   2) Actions → Release → Run workflow，version 留空：自动取下一个开发版本（最新的 v<x>-dev.N → N+1），
+#      或在 version 里写明（例如 v0.3-dev.1）；在 main 当前提交上发布。release 正文用 docs/release-notes/<tag>.md（有的话）。
+#   3) 维护者手动推 v* tag（原来的方式）。
+# tag 是在构建通过之后，由最后的发布 job 随 release 一起创建的：构建失败不会留下孤零零的 tag。
 # tag 格式：v<CFBundleShortVersionString>，例如 v0.2；tag 指向的提交必须已经在 main 上（即走过 PR）。
 #   带后缀（v0.2-dev.1、v0.3-rc.1）→ 预发布，标明“未通过发布门槛”，发布门槛不满足也能发。
 #   不带后缀（v0.2）→ 正式发布，必须 `tests/acceptance.py --require-gate --release-commit <tag 提交>` 通过：
@@ -13,42 +19,111 @@ name: Release
 on:
   push:
     tags: ['v*']
+    branches: [main]
+    paths: ['docs/release-notes/v*.md']
   workflow_dispatch:
     inputs:
+      version:
+        description: '新版本的 tag，例如 v0.3-dev.1；留空 = 自动取下一个开发版本（最新 v*-dev.N 加一）。在 main 当前提交上发布'
+        required: false
       tag:
-        description: '已有的 tag，例如 v0.2-dev.1：重新构建，并把安装包挂到这个 tag 的 release 上'
-        required: true
+        description: '（补挂用）已有的 tag，例如 v0.2-dev.1：重新构建，并把安装包挂到这个 tag 的 release 上；填了它就忽略 version'
+        required: false
 permissions:
   contents: read
 concurrency:
-  group: release-${{ inputs.tag || github.ref_name }}
+  group: release-${{ inputs.tag || inputs.version || github.ref_name }}
   cancel-in-progress: false
 jobs:
-  build:
-    # 推 tag 就等于发布。只接受维护者账号推的 tag；Claude GitHub App（claude[bot]）等其他主体推的 tag 直接跳过。
+  prepare:
+    # 发布只接受维护者账号触发的运行；Claude GitHub App（claude[bot]）等其他主体的运行直接跳过（build 依赖本 job，随之跳过）。
     # 注意：代理如果用维护者账号操作，这里区分不出来，仍然靠约定（AGENTS.md）。
     if: github.actor == 'daniel-to-the-moon'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read  # 只读：算出要发布哪个 tag、哪个提交；不创建 tag，不运行仓库里的代码
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      sha: ${{ steps.plan.outputs.sha }}
+      skip: ${{ steps.plan.outputs.skip }}
+    steps:
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          IN_TAG: ${{ inputs.tag }}
+          IN_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          re='^v[0-9][0-9A-Za-z.-]*$'
+          existing_sha() {  # commit of an existing tag, empty if there is none
+            local obj type
+            obj=$(gh api "repos/$GH_REPO/git/ref/tags/$1" --jq '.object.sha+" "+.object.type' 2>/dev/null) || return 0
+            type=${obj#* }; obj=${obj%% *}
+            if [ "$type" = tag ]; then obj=$(gh api "repos/$GH_REPO/git/tags/$obj" --jq .object.sha); fi
+            echo "$obj"
+          }
+          emit() { echo "tag=$1" >> "$GITHUB_OUTPUT"; echo "sha=$2" >> "$GITHUB_OUTPUT"; echo "skip=$3" >> "$GITHUB_OUTPUT"; }
+          if [ "$REF_TYPE" = tag ]; then emit "$REF_NAME" "$SHA" false; exit 0; fi  # a pushed v* tag (the original way)
+          if [ -n "$IN_TAG" ]; then  # re-attach to an existing tag
+            [[ "$IN_TAG" =~ $re ]] || { echo "::error::$IN_TAG is not a v* tag"; exit 1; }
+            sha=$(existing_sha "$IN_TAG")
+            [ -n "$sha" ] || { echo "::error::tag $IN_TAG does not exist; leave 'tag' empty to create a new version"; exit 1; }
+            emit "$IN_TAG" "$sha" false; exit 0
+          fi
+          # From here on a new tag is created, on the commit of this run, which must be on main.
+          [ "$REF_NAME" = main ] || { echo "::error::new versions are released from main only (this run is on $REF_NAME)"; exit 1; }
+          if [ "$EVENT" = push ]; then  # a merge that added docs/release-notes/v*.md
+            file=$(gh api "repos/$GH_REPO/commits/$SHA" --jq '.files[]|select(.status=="added")|.filename' \
+              | grep -E '^docs/release-notes/v[0-9][0-9A-Za-z.-]*\.md$' | head -n 1 || true)
+            if [ -z "$file" ]; then echo "No new release-notes file in this push; nothing to release."; emit "" "$SHA" true; exit 0; fi
+            tag=$(basename "$file" .md)
+          elif [ -n "$IN_VERSION" ]; then
+            tag=$IN_VERSION
+          else  # suggest the next dev version: the newest v<x>-dev.N becomes v<x>-dev.N+1
+            last=$(gh api --paginate "repos/$GH_REPO/tags?per_page=100" --jq '.[].name' | grep -E '^v[0-9][0-9A-Za-z.]*-dev\.[0-9]+$' | sort -V | tail -n 1 || true)
+            [ -n "$last" ] || { echo "::error::no v*-dev.N tag to continue from; give 'version' explicitly (e.g. v0.3-dev.1)"; exit 1; }
+            tag="${last%-dev.*}-dev.$(( ${last##*-dev.} + 1 ))"
+            echo "Suggested next version: $tag (after $last)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          [[ "$tag" =~ $re ]] || { echo "::error::$tag is not a valid tag (v<version>[-suffix])"; exit 1; }
+          if [ -n "$(existing_sha "$tag")" ]; then
+            if [ "$EVENT" = push ]; then echo "Tag $tag already exists; nothing to release."; emit "" "$SHA" true; exit 0; fi
+            echo "::error::tag $tag already exists; use the 'tag' input to re-attach files to it"; exit 1
+          fi
+          emit "$tag" "$SHA" false
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
     runs-on: macos-15
     timeout-minutes: 20
     env:
-      TAG: ${{ inputs.tag || github.ref_name }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      PLAN_SHA: ${{ needs.prepare.outputs.sha }}
     outputs:
       prerelease: ${{ steps.tag.outputs.prerelease }}
       tag: ${{ steps.tag.outputs.tag }}
+      sha: ${{ steps.tag.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          ref: ${{ needs.prepare.outputs.sha }}
       - name: Tag is on main and matches app version
         id: tag
         run: |
-          if ! [[ "$TAG" =~ ^v[0-9][0-9A-Za-z.-]*$ ]] || ! sha=$(git rev-parse --verify -q "refs/tags/$TAG^{commit}"); then
-            echo "::error::$TAG is not an existing v* tag"; exit 1
-          fi
-          if [ "$sha" != "$(git rev-parse HEAD)" ]; then echo "::error::checkout does not match tag $TAG"; exit 1; fi
+          # The tag may not exist yet (it is created together with the release, after this build passes).
+          if ! [[ "$TAG" =~ ^v[0-9][0-9A-Za-z.-]*$ ]]; then echo "::error::$TAG is not a v* tag"; exit 1; fi
+          sha=$PLAN_SHA
+          if [ "$sha" != "$(git rev-parse HEAD)" ]; then echo "::error::checkout does not match the planned commit for $TAG"; exit 1; fi
           echo "SHA=$sha" >> "$GITHUB_ENV"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
           git fetch --no-tags origin main
           if ! git merge-base --is-ancestor "$sha" origin/main; then
             echo "::error::tag $TAG points to a commit that is not on main; merge through a PR first"; exit 1
@@ -88,6 +163,10 @@ jobs:
           ditto -c -k --keepParent build/Hachi.app "$zip"
           (cd dist && shasum -a 256 "$(basename "$zip")" > "$(basename "$zip").sha256")
           {
+            if [ -f "docs/release-notes/${TAG}.md" ]; then  # the maintainer-reviewed notes lead the release body
+              cat "docs/release-notes/${TAG}.md"
+              printf '\n\n---\n\n'
+            fi
             if [ "${{ steps.tag.outputs.prerelease }}" = "true" ]; then
               met=$(python3 -c "import json;g=json.load(open('build/acceptance/report.json'))['gate'];print(f\"{sum(x['met'] for x in g)}/{len(g)}\")")
               echo "> **开发预发布。** 本次评估发布门槛满足 ${met} 项；预发布不要求门槛，只用于试用和测试。"
@@ -136,6 +215,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PRERELEASE: ${{ needs.build.outputs.prerelease }}
           TAG: ${{ needs.build.outputs.tag }}
+          TARGET_SHA: ${{ needs.build.outputs.sha }}
         run: |
           assets=(dist/Hachi-*-macos.zip dist/Hachi-*-macos.zip.sha256)
           # The acceptance report travels as an asset too, so a release whose notes were written by hand still
@@ -188,7 +268,10 @@ jobs:
           # approved this job). Otherwise, or if the rules cannot be read, create a draft for the maintainer.
           reviewers=$(gh api "repos/$GH_REPO/environments/release" \
             --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length' 2>/dev/null || echo 0)
-          if [ "${reviewers:-0}" -lt 1 ]; then
+          # A pre-release is published directly: the maintainer's own action (merging the release-notes PR, or Run
+          # workflow / pushing the tag) is the approval, and it is only offered as a trial build. A stable release
+          # keeps the fail-closed rule above.
+          if [ "$PRERELEASE" != "true" ] && [ "${reviewers:-0}" -lt 1 ]; then
             flags+=(--draft)
             echo "::warning::release environment has no required reviewers (or they could not be read); created a draft release. Publish that draft by hand from the Releases page."
             {
@@ -197,5 +280,6 @@ jobs:
               echo "不要另建一个新的 release，否则安装包留在草稿上，你发布的那个没有安装包。"
             } >> "$GITHUB_STEP_SUMMARY"
           fi
-          gh release create "$TAG" --verify-tag --title "Hachi $TAG" \
+          # No --verify-tag: for a new version this creates the tag, on the commit that was built.
+          gh release create "$TAG" --target "$TARGET_SHA" --title "Hachi $TAG" \
             --notes-file dist/release-notes.md "${flags[@]}" "${assets[@]}"
