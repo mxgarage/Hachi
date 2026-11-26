@@ -118,10 +118,12 @@ private extension NSBezierPath {
     }
 }
 
-struct Result: Codable {
+struct Result: Encodable {
     let provider: String
     let status: String
     let evidence: String
+    /// false when the entry could not be started at all (not part of the JSON output).
+    let entryRan: Bool
     let mode = "preflight_only"
     let browserOAuth = "not_covered"
     let mcp = "not_covered"
@@ -132,8 +134,8 @@ struct Result: Codable {
         try c.encode(evidence, forKey: .evidence); try c.encode(mode, forKey: .mode)
         try c.encode(browserOAuth, forKey: .browserOAuth); try c.encode(mcp, forKey: .mcp)
     }
-    init(provider: String, status: String, evidence: String) {
-        self.provider = provider; self.status = status; self.evidence = evidence
+    init(provider: String, status: String, evidence: String, entryRan: Bool = true) {
+        self.provider = provider; self.status = status; self.evidence = evidence; self.entryRan = entryRan
     }
 }
 
@@ -155,7 +157,7 @@ func runEntry(_ entry: URL, provider: String) -> Result {
         return Result(provider: provider, status: process.terminationStatus == 0 ? "passed" : "blocked",
                       evidence: String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
     } catch {
-        return Result(provider: provider, status: "blocked", evidence: "无法运行预检入口：\(error.localizedDescription)")
+        return Result(provider: provider, status: "blocked", evidence: "无法运行预检入口：\(error.localizedDescription)", entryRan: false)
     }
 }
 
@@ -194,7 +196,17 @@ func setChecking(_ row: NSMenuItem, _ on: Bool) -> String {
 func makeAlert(_ result: Result) -> NSAlert {
     let alert = NSAlert()
     alert.messageText = "\(result.provider.capitalized)：\(result.status == "passed" ? "预检通过" : "预检未通过")"
-    alert.informativeText = result.evidence + "\n\n未启动客户端。浏览器 OAuth、MCP 和运行中拦截未覆盖。"
+    // "Blocked" only means the entry exited non-zero; Hachi cannot tell which of its checks failed. Say so, because a
+    // matching IP with observed_route=NOT OBSERVED (the entry's own output) reads like a contradiction otherwise.
+    var hint = ""
+    if result.status != "passed" && result.entryRan {
+        hint = "\n\n“未通过”表示预检入口返回了失败，Hachi 只转述它的输出，不判断原因。"
+        if result.evidence.contains("expected=") {  // only when the output has the fields the sentence talks about
+            hint += "未通过不一定是 IP 的问题：请看输出里哪一项没满足，例如 IP 与 expected 不同，或 observed_route=NOT OBSERVED（没有观察到预期路由）。"
+        }
+    }
+    alert.informativeText = result.evidence + hint
+        + "\n\n这只是预检：Hachi 没有启动客户端（“未启动客户端”不是失败原因）。浏览器 OAuth、MCP 和运行中拦截未覆盖。"
     return alert
 }
 

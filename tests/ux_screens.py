@@ -76,6 +76,16 @@ for n in ('alert-claude-passed', 'alert-claude-blocked', 'alert-codex-passed', '
     # it says nothing about what a real claude-safe / codex-safe prints. Those scripts are not in this repo.
     body = texts(n)[1]
     assert all(f in body for f in ('IP=', 'expected=', 'trace=', 'TLS=', 'observed_route=', 'CHECK-ONLY')), (n, body)
+for n in ('alert-claude-blocked', 'alert-codex-blocked'):
+    # The hint is fixed wording about the entry's (external) output format; the fixture does not claim to reproduce
+    # a matching IP with NOT OBSERVED, so this only checks that the hint and the footer are present.
+    assert '没有观察到预期路由' in texts(n)[1] and '未通过不一定是 IP 的问题' in texts(n)[1], n
+    assert '不是失败原因' in texts(n)[1], n
+for n in ('alert-claude-passed', 'alert-codex-passed', 'alert-entry-missing'):
+    # the outer hint is only for an entry that ran and failed (covers both the status and the entryRan conditions)
+    assert '只转述它的输出' not in texts(n)[1], n
+for n in ('alert-claude-blocked', 'alert-codex-blocked'):
+    assert '只转述它的输出' in texts(n)[1], n
 assert texts('alert-claude-passed')[0] == 'Claude：预检通过' and texts('alert-codex-blocked')[0] == 'Codex：预检未通过'
 assert manifest['tooltips'] == {'idle': 'Hachi · 观察模式（不拦截）', 'checking': 'Hachi · 预检中'}
 
