@@ -72,7 +72,9 @@ assert '[disabled] 系统网络：等待状态' in texts('menu-network-waiting')
 assert any('可用（不是出口验证）' in t for t in texts('menu-network-available'))
 assert '[disabled] 检查 Claude 出口' in texts('menu-checking-claude') and '检查 Codex 出口' in texts('menu-checking-claude')
 for n in ('alert-claude-passed', 'alert-claude-blocked', 'alert-codex-passed', 'alert-codex-blocked'):
-    body = texts(n)[1]  # the precheck dialog shows the entry's fields as they come, plus the CHECK-ONLY note
+    # Only keeps the hand-written example complete (so the screenshots keep showing a long, multi-field result);
+    # it says nothing about what a real claude-safe / codex-safe prints. Those scripts are not in this repo.
+    body = texts(n)[1]
     assert all(f in body for f in ('IP=', 'expected=', 'trace=', 'TLS=', 'observed_route=', 'CHECK-ONLY')), (n, body)
 assert texts('alert-claude-passed')[0] == 'Claude：预检通过' and texts('alert-codex-blocked')[0] == 'Codex：预检未通过'
 assert manifest['tooltips'] == {'idle': 'Hachi · 观察模式（不拦截）', 'checking': 'Hachi · 预检中'}
