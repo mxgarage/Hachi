@@ -6,7 +6,7 @@ import subprocess
 import threading
 
 APP = Path(__file__).resolve().parents[1] / 'build/Hachi.app/Contents/MacOS/Hachi'
-CASES = dict(approved=(200, {'route': 'lab-approved'}, 'matched'), drift=(200, {'route': 'lab-other'}, 'mismatch'), malformed=(200, 'not-json', 'unknown'), outage=(503, {}, 'unknown'), redirect=(302, {}, 'unknown'))
+CASES = dict(approved=(200, {'route': 'lab-approved'}, 'matched'), drift=(200, {'route': 'lab-other'}, 'mismatch'), malformed=(200, 'not-json', 'unknown'), outage=(503, {}, 'unknown'), redirect=(302, {}, 'unknown'), oversize=(200, {'route': 'lab-approved', 'pad': 'x' * 2048}, 'unknown'))
 seen = []
 
 class Observer(BaseHTTPRequestHandler):
@@ -35,10 +35,22 @@ def main():
                 r = run('--lab-probe', f'http://127.0.0.1:{port}/{case}', 'lab-approved')
                 assert r.returncode == 0, (case, r.stderr, r.returncode)
                 assert json.loads(r.stdout) == {'status': expected, 'mode': 'synthetic_probe_only'}, (case, r.stdout)
-            for url in (f'http://127.0.0.1:{port}/approved?secret=never-send', 'https://example.invalid/probe'):
-                assert run('--lab-probe', url, 'lab-approved').returncode == 2
+            rejected = (
+                f'http://127.0.0.1:{port}/approved?secret=never-send',
+                'https://example.invalid/probe',
+                f'http://user:pw@127.0.0.1:{port}/approved',
+                f'http://127.0.0.1:{port}/approved#x',
+                f'http://localhost:{port}/approved',
+                'http://127.0.0.1/approved',
+                'http://127.0.0.1:0/approved',
+            )
+            for url in rejected:
+                r = run('--lab-probe', url, 'lab-approved')
+                assert r.returncode == 2, (url, r.returncode, r.stdout)
+            r = run('--lab-probe', f'http://127.0.0.1:{port}/approved', '')
+            assert r.returncode == 2, ('empty expected', r.returncode, r.stdout)
             assert seen == [(f'/{case}', None, None) for case in CASES], seen
-            print('PASS: 5 live loopback scenarios, 2 rejected URLs; no credentials or redirect follows')
+            print(f'PASS: {len(CASES)} live loopback scenarios, {len(rejected)} rejected URLs, empty expected rejected; no credentials or redirect follows')
         finally:
             observer.shutdown()
     r = run('--lab-probe', f'http://127.0.0.1:{port}/approved', 'lab-approved')
