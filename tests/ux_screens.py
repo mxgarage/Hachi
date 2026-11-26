@@ -81,7 +81,11 @@ for n in ('alert-claude-blocked', 'alert-codex-blocked'):
     # a matching IP with NOT OBSERVED, so this only checks that the hint and the footer are present.
     assert '没有观察到预期路由' in texts(n)[1] and '未通过不一定是 IP 的问题' in texts(n)[1], n
     assert '不是失败原因' in texts(n)[1], n
-assert '没有观察到预期路由' not in texts('alert-claude-passed')[1] and '没有观察到预期路由' not in texts('alert-entry-missing')[1]
+for n in ('alert-claude-passed', 'alert-codex-passed', 'alert-entry-missing'):
+    # the outer hint is only for an entry that ran and failed (covers both the status and the entryRan conditions)
+    assert '只转述它的输出' not in texts(n)[1], n
+for n in ('alert-claude-blocked', 'alert-codex-blocked'):
+    assert '只转述它的输出' in texts(n)[1], n
 assert texts('alert-claude-passed')[0] == 'Claude：预检通过' and texts('alert-codex-blocked')[0] == 'Codex：预检未通过'
 assert manifest['tooltips'] == {'idle': 'Hachi · 观察模式（不拦截）', 'checking': 'Hachi · 预检中'}
 
