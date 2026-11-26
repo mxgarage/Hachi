@@ -4,7 +4,7 @@
 
 ## 一次改动的完整流程
 
-1. **开工**：维护者在 issue 上打 `claude` 标签（或发一条以 `@claude` 开头的评论），`claude.yml` 让 Claude 在新分支上实现（默认 Sonnet，issue 另带 `opus` 标签时用 Opus）；其他代理（Codex、Muse）或人自己开 `<执行者>/<主题>` 分支。同一个 issue 同时只有一个执行者。
+1. **开工**：维护者在 issue 上打 `claude` 标签（或发一条以 `@claude` 开头的评论），`claude.yml` 让 Claude 在新分支上实现（默认 Sonnet，issue 另带 `opus` 标签时用 Opus）。它只推分支，在 issue 评论里给一个 “Create PR” 链接，不会自己开 PR：维护者（或替维护者工作的代理）点链接按模板开 PR 后，CI 和评审才开始；其他代理（Codex、Muse）或人自己开 `<执行者>/<主题>` 分支。同一个 issue 同时只有一个执行者。
 2. **开 PR**：按 `.github/pull_request_template.md` 填写，写明执行者和用的模型（见下面的“模型调度”）。
 3. **自动检查**（PR 每次推送）：
    - `verify.yml`（`Account-free macOS verification`，`macos-15`）：跑 `tests/acceptance.py`，其中包括构建、loopback 实验、品牌检查、UX 截图渲染、截图与 `tests/ux-baseline/` 的逐像素比较、门槛自检、仓库卫生检查和门槛评估；然后上传 app zip、验收报告和截图差异图（产物 `hachi-<sha>`）。代理分支改了 `evidence/` 直接失败；改门槛定义、工作流或截图基线只在 job summary 里给警告，留给维护者看。
@@ -20,7 +20,7 @@
 |---|---|---|---|
 | `verify.yml` | 推到 main、任意 PR、手动 | 验收基线 + 门槛评估，上传产物 | 只读 |
 | `claude-review.yml` | 非 Draft PR 打开/更新（纯文档 PR 除外） | Sonnet 评审评论 | 评论 |
-| `claude.yml` | issue 打 `claude` 标签；成员以 `@claude` 开头的评论 | Claude 实现并开 PR（默认 Sonnet，`opus` 标签用 Opus） | 写分支、开 PR |
+| `claude.yml` | issue 打 `claude` 标签；成员以 `@claude` 开头的评论 | Claude 实现，推分支并给出 “Create PR” 链接（默认 Sonnet，`opus` 标签用 Opus） | 写分支、评论 |
 | `acceptance-backlog.yml` | 推到 main、每周一、手动 | 维护 `acceptance` issue | 写 issue |
 | `release.yml` | 维护者推 `v*` tag、手动（已有 tag） | 构建、验收、签名、挂到 Release | 只有最后一步可写 |
 
@@ -63,6 +63,8 @@ python3 tests/acceptance.py --gate-only # 只评估门槛（不需要 macOS）
 - `claude-review.yml` 用 Sonnet，且不评审纯文档 PR（只改 `docs/` 和 Markdown，规则文件和 G6 走查清单除外）；纯文档 PR 由 Codex 评审即可满足“至少一份非作者评审”。
 - PR 模板的“执行者”一栏写明用的模型，日报据此统计。
 - 不管谁做，产出都走 PR、CI 和评审，规则不因执行者不同而放宽。
+
+2026-11-26 试跑（issue #16 → PR #17，只改测试的小任务，费用是 Actions 日志里 `total_cost_usd` 的 API 价估算）：Sonnet 实现 11 轮、28 秒、约 $0.15；Sonnet 评审 1 轮、8 轮对话、约 $0.12；macOS CI 一次，35 秒；从打标签到 CI、Claude 评审和 Codex 评审全部完成约 3.5 分钟，没有返工。之前同类工作全在 Opus 上（例如纯文档 PR #12 约 $15.9、16 轮 Claude 评审）。
 
 ## 日报里的使用量复盘
 
