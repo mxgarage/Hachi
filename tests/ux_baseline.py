@@ -392,7 +392,7 @@ def selftest():
     write_png(base / 'gone-light.png', w, h, a)
     import contextlib
     with contextlib.redirect_stdout(io.StringIO()) as log:
-        rc = compare(cur, base, out)  # in CI this also prints the (small) bundle into the captured text
+        rc = compare(cur, base, out, warn=False)  # not the HACHI_UX_DIFF env (release.yml sets warn); in CI this also prints the (small) bundle into the captured text
     text = log.getvalue()
     assert rc == 1 and 'same-light.png' not in text, text
     for n, why in [('pixel-light.png', '1 pixels changed'), ('size-light.png', 'size 8x5 -> 7x5'),

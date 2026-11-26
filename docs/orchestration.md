@@ -60,7 +60,7 @@ python3 tests/acceptance.py --gate-only # 只评估门槛（不需要 macOS）
 落地方式：
 
 - `claude.yml` 默认用 Sonnet。issue 同时带 `opus` 标签时用 Opus，留给左栏第一行那类任务；维护者打 `claude` 标签前先判断交给谁。
-- `claude-review.yml` 用 Sonnet，且不评审纯文档 PR（只改 `docs/` 和 Markdown，规则文件和 G6 走查清单除外）；纯文档 PR 由 Codex 评审即可满足“至少一份非作者评审”。
+- `claude-review.yml` 用 Sonnet，且不评审纯文档 PR（只改 `docs/` 和 Markdown，规则文件、G6 走查清单和 `docs/release-notes/`（合并新增的说明文件就会发布）除外）；纯文档 PR 由 Codex 评审即可满足“至少一份非作者评审”。
 - PR 模板的“执行者”一栏写明用的模型，日报据此统计。
 - 不管谁做，产出都走 PR、CI 和评审，规则不因执行者不同而放宽。
 

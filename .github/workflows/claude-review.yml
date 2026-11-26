@@ -3,7 +3,7 @@ name: Claude PR review
 # 需要维护者在仓库 Secrets 里添加 CLAUDE_CODE_OAUTH_TOKEN（或 ANTHROPIC_API_KEY）；
 # 没有密钥时这个工作流会跳过评审步骤，不会失败。
 # 模型调度（docs/orchestration.md）：评审用 Sonnet；纯文档 PR 不触发，只由 Codex 评审。
-# 除规则文件（AGENTS.md、evidence/README.md、PR 模板、G6 走查清单 docs/ux-checklist.md）外，只改 Markdown 和 docs/ 的 PR 算纯文档。
+# 除规则文件（AGENTS.md、evidence/README.md、PR 模板、G6 走查清单 docs/ux-checklist.md、发布说明 docs/release-notes/）外，只改 Markdown 和 docs/ 的 PR 算纯文档。
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
@@ -14,6 +14,7 @@ on:
       - 'AGENTS.md'
       - 'evidence/README.md'
       - 'docs/ux-checklist.md'
+      - 'docs/release-notes/**'  # merging a new notes file publishes a release: not a docs-only PR
       - '.github/pull_request_template.md'
 permissions:
   contents: read
