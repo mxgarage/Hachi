@@ -69,6 +69,10 @@ jobs:
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Acceptance (stable release requires the full gate)
+        env:
+          # 维护者决定（2026-11-26）：截图和基线不一致时，PR 和 main 上失败，发布时只警告，差异图附在下面的产物里。
+          # PR 和 main 已经拦下真实回归和有意改动，发布时才出现的差异基本是 runner 镜像更新。
+          HACHI_UX_DIFF: warn
         run: |
           if [ "${{ steps.tag.outputs.prerelease }}" = "true" ]; then
             python3 tests/acceptance.py
@@ -96,6 +100,15 @@ jobs:
             echo
             cat build/acceptance/report.md
           } > dist/release-notes.md
+      - name: Screenshot diff (only when the screenshots differed from the baseline)
+        if: always() && hashFiles('build/acceptance/ux-diff/*-diff.png') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-ux-diff
+          path: |
+            build/acceptance/ux-diff/
+            build/acceptance/ux-candidate-baseline/
+          retention-days: 30
       - uses: actions/upload-artifact@v4
         with:
           name: release-dist

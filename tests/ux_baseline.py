@@ -4,6 +4,7 @@ tests/ux-baseline/ and fail on any difference.
   python3 tests/ux_baseline.py                  # in CI: compare build/acceptance/ux/ with tests/ux-baseline/
                                                 # elsewhere: self-test only, comparison skipped (see below)
   python3 tests/ux_baseline.py --compare-locally  # compare off CI anyway; expected to differ
+  HACHI_UX_DIFF=warn python3 tests/ux_baseline.py # differences warn instead of failing (release.yml only)
   python3 tests/ux_baseline.py --selftest       # check the PNG reader/writer and the diff (any OS)
   python3 tests/ux_baseline.py --import-log LOG # take a new baseline from a CI job log (see below)
 
@@ -175,7 +176,12 @@ def environment():
             'macos': run(['sw_vers', '-productVersion']) or platform.platform(),
             'arch': platform.machine()}
 
-def compare(current=None, baseline=None, out=None):
+def compare(current=None, baseline=None, out=None, warn=None):
+    """0 if every screenshot matches. On a difference: 1, or 0 with a warning when warn is set (HACHI_UX_DIFF=warn,
+    used by release.yml: PRs and main already fail on a difference, so one that first shows up at release time is
+    almost always a runner image update)."""
+    if warn is None:
+        warn = os.environ.get('HACHI_UX_DIFF') == 'warn'
     CURRENT, BASELINE, DIFF, CANDIDATE = _dirs(current, baseline, out)
     states = json.loads((CURRENT / 'ui-states.json').read_text(encoding='utf-8'))['states']
     files = sorted(s['file'] for s in states)
@@ -251,6 +257,18 @@ def compare(current=None, baseline=None, out=None):
           'artifact, or run: python3 tests/ux_baseline.py --import-log <this job log>')
     if os.environ.get('GITHUB_ACTIONS') == 'true':
         print_bundle(CANDIDATE)
+    if warn:
+        print(f'::warning::{len(problems)} UX screenshots differ from the baseline (release: warning only)'
+              + (' — runner environment changed' if drift else ''))
+        if os.environ.get('GITHUB_STEP_SUMMARY'):
+            with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as f:
+                f.write('### ⚠️ 截图和基线不一致（发布时只警告，不阻断）\n\n'
+                        + (f'{drift}\n\n' if drift else '')
+                        + ''.join(f'- {p}\n' for p in problems)
+                        + '\n差异图在本次运行的 `release-ux-diff` 产物里（`ux-diff/index.html`）。'
+                          '如果只是 runner 变了，请开一个刷新基线的 PR；如果界面真的变了，请看差异图决定是否撤回这次发布。\n\n')
+        print(f'WARN: {len(problems)} differences between {len(files)} UX screenshots and the baseline (not failing)')
+        return 0
     print(f'FAIL: {len(problems)} differences between {len(files)} UX screenshots and the baseline')
     return 1
 
@@ -383,13 +401,26 @@ def selftest():
         assert f'{n}: {why}' in text, (n, text)
     assert (out / 'ux-diff' / 'index.html').is_file() and (out / 'ux-diff' / 'pixel-light-diff.png').is_file()
     assert sorted(p.name for p in (out / 'ux-candidate-baseline').glob('*.png')) == sorted(names)
+    summary = tmp / 'summary.md'
+    old_summary = os.environ.get('GITHUB_STEP_SUMMARY')
+    os.environ['GITHUB_STEP_SUMMARY'] = str(summary)
+    try:
+        with contextlib.redirect_stdout(io.StringIO()) as log:
+            assert compare(cur, base, out, warn=True) == 0, 'warn mode does not fail'
+    finally:
+        if old_summary is None:
+            del os.environ['GITHUB_STEP_SUMMARY']
+        else:
+            os.environ['GITHUB_STEP_SUMMARY'] = old_summary
+    assert '::warning::5 UX screenshots differ' in log.getvalue() and 'WARN: 5 differences' in log.getvalue(), log.getvalue()
+    assert 'pixel-light.png: 1 pixels changed' in summary.read_text(encoding='utf-8')
     for n in names:
         write_png(base / n, w, h, a)
     (base / 'gone-light.png').unlink()
     with contextlib.redirect_stdout(io.StringIO()):
         assert compare(cur, base, out) == 0, 'identical sets pass'
     shutil.rmtree(tmp)
-    print('PASS: PNG reader/writer (filters 0-4, grey/RGB/16-bit), pixel diff, and compare() on every outcome')
+    print('PASS: PNG reader/writer (filters 0-4, grey/RGB/16-bit), pixel diff, and compare() on every outcome incl. release warn mode')
 
 def main():
     ap = argparse.ArgumentParser()

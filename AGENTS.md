@@ -42,5 +42,5 @@ python3 tests/branding.py
 python3 tests/ux_screens.py   # 渲染所有菜单和提醒状态的截图
 python3 tests/acceptance.py   # 包含以上各步和截图基线比较，另做卫生检查和门槛评估
 ```
-截图像素比较只在 CI 上算数：本机运行时 `tests/ux_baseline.py` 只做自检，`--compare-locally` 可以强制在本机比较（本机渲染本来就和 CI 基线不同）。基线只能取自 CI，`--import-log <CI job 日志>` 可以从日志里取，流程见 `tests/ux-baseline/README.md`。
+截图像素比较只在 CI 上算数：本机运行时 `tests/ux_baseline.py` 只做自检，`--compare-locally` 可以强制在本机比较（本机渲染本来就和 CI 基线不同）。基线只能取自 CI，`--import-log <CI job 日志>` 可以从日志里取，流程见 `tests/ux-baseline/README.md`。截图和基线不一致时，PR 和 main 上 CI 失败；发布（`release.yml`）时只警告，差异图放在 `release-ux-diff` 产物里（维护者 2026-11-26 决定）。
 `tests/check.py` 是可选的手动冒烟测试，不属于验收或 CI。

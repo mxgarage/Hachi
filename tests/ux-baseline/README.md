@@ -19,6 +19,11 @@ The report says when the runner differs from `baseline.json`. It still fails, be
 apart from pixels; when only the runner changed, refresh the baseline in a separate PR so the refresh is reviewed
 on its own.
 
+Releases are the exception (maintainer's decision, 2026-11-26): `release.yml` sets `HACHI_UX_DIFF=warn`, so a
+difference there is a warning in the job summary with the diff images in the `release-ux-diff` artifact, not a
+failure. PRs and pushes to main already fail on any difference, so a difference that first appears at release time
+is almost always a runner image update.
+
 ## Accepting an intended change
 
 1. Push the change. The `Account-free macOS verification` job fails at "UX screenshots match baseline" and uploads
