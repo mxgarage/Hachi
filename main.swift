@@ -269,7 +269,19 @@ func savePNG(_ view: NSView, appearance: NSAppearance, to url: URL) throws {
             failure = CocoaError(.fileWriteUnknown); return
         }
         view.cacheDisplay(in: view.bounds, to: rep)
-        guard let png = rep.representation(using: .png, properties: [:]) else { failure = CocoaError(.fileWriteUnknown); return }
+        // An alert's content view is transparent (the window draws its background), so a bare capture shows dark-mode
+        // text on nothing: white on white in any viewer. Put the window background under every screenshot.
+        guard let flat = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: rep.pixelsWide, pixelsHigh: rep.pixelsHigh,
+                                          bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                          colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: flat) else { failure = CocoaError(.fileWriteUnknown); return }
+        flat.size = rep.size  // keep the point size (and so the PNG's DPI) of the original capture
+        NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = context
+        let full = NSRect(x: 0, y: 0, width: rep.pixelsWide, height: rep.pixelsHigh)
+        NSColor.windowBackgroundColor.setFill(); full.fill()
+        rep.draw(in: full, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+        NSGraphicsContext.restoreGraphicsState()
+        guard let png = flat.representation(using: .png, properties: [:]) else { failure = CocoaError(.fileWriteUnknown); return }
         do { try png.write(to: url) } catch { failure = error }
     }
     if let failure { throw failure }
@@ -298,10 +310,25 @@ func renderUI(into dir: URL) throws {
         return (name, MenuPicture(menu), texts)
     }
     func alertState(_ name: String, _ result: Result) -> (String, NSView, [String]) {
-        let alert = makeAlert(result); alert.layout()
+        let alert = makeAlert(result)
+        // The default alert icon (the app icon) is loaded asynchronously and is sometimes still a placeholder when
+        // drawn offscreen; draw the same artwork synchronously so the screenshots are stable. The running app keeps the
+        // default (the app icon, Hachi.icns, rendered from this same hachiIcon(badge: true) by build.py).
+        alert.icon = hachiIcon(size: 128, badge: true)
+        alert.layout()
         return (name, alert.window.contentView!, [alert.messageText, alert.informativeText])
     }
-    let example = "示例输出（截图用，不是真实预检结果）"
+    // Hand-written after a real claude-safe --check-only dialog the maintainer shared (2026-11-25), so the screenshots
+    // show how a long, multi-line result wraps. The entry scripts are not in this repo, so nothing checks that their
+    // output still looks like this. Documentation addresses only (RFC 5737); labelled as an example in the alert.
+    func example(_ host: String, passed: Bool) -> String {
+        let ip = passed ? "203.0.113.10" : "198.51.100.7"
+        let verdict = passed
+            ? "PASS = these sampled requests matched expected IP and route only; not proof of kill switch, future requests, app coverage, or account safety."
+            : "BLOCKED = the sampled exit IP did not match expected; the client was not started."
+        return "示例输出（截图用，不是真实预检结果）\n\(host): \(passed ? "PASS" : "BLOCKED"); IP=\(ip); expected=203.0.113.10; "
+            + "trace=200 TLS=0; observed_route=\(passed ? "example-chain" : "unexpected")\n\(verdict)\nCHECK-ONLY: 未启动客户端"
+    }
     let builders: [() -> (String, NSView, [String])] = [
         { ("menubar-rest", MenuBarPicture(pose: 0, tooltip: idleTooltip), [idleTooltip]) },
         { ("menubar-wag", MenuBarPicture(pose: maximumWagAngle, tooltip: idleTooltip), [idleTooltip]) },
@@ -312,10 +339,10 @@ func renderUI(into dir: URL) throws {
         { menuState("menu-checking-claude") { m in
             m.item(withTag: pathTag)?.title = networkTitle(satisfied: true)
             if let row = m.items.first(where: { $0.representedObject as? String == "claude" }) { _ = setChecking(row, true) } } },
-        { alertState("alert-claude-passed", Result(provider: "claude", status: "passed", evidence: example)) },
-        { alertState("alert-claude-blocked", Result(provider: "claude", status: "blocked", evidence: example)) },
-        { alertState("alert-codex-passed", Result(provider: "codex", status: "passed", evidence: example)) },
-        { alertState("alert-codex-blocked", Result(provider: "codex", status: "blocked", evidence: example)) },
+        { alertState("alert-claude-passed", Result(provider: "claude", status: "passed", evidence: example("claude.ai", passed: true))) },
+        { alertState("alert-claude-blocked", Result(provider: "claude", status: "blocked", evidence: example("claude.ai", passed: false))) },
+        { alertState("alert-codex-passed", Result(provider: "codex", status: "passed", evidence: example("chatgpt.com", passed: true))) },
+        { alertState("alert-codex-blocked", Result(provider: "codex", status: "blocked", evidence: example("chatgpt.com", passed: false))) },
         // the real failure path: run an entry that does not exist, as check() does when claude-safe is missing
         { alertState("alert-entry-missing", runEntry(dir.appendingPathComponent("missing/claude-safe"), provider: "claude")) },
     ]

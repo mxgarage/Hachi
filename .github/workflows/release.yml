@@ -9,7 +9,7 @@ name: Release
 # 如果这个 tag 已经有 release（例如维护者在网页上手动建的），安装包会挂到那个 release 上，不再另建草稿。
 # 手动运行（Actions → Release → Run workflow，填已有的 tag）：为已有 tag 重新构建并补挂安装包。
 #   已发布的 release 只补挂缺少的文件，不替换已有的同名文件；草稿上的同名文件会被替换（新的 SHA-256 写在 job summary）。稳定 tag 仍要求等于当前 main HEAD，main 前进后旧的稳定 tag 无法这样补挂。
-#   “挂到已有 release”和手动运行这两条路径合并时还没有用真实 tag 跑过。
+#   2026-11-25 用 v0.2-dev.1 手动运行过一次，挂到了已发布的 release 上；“推 tag 时已有 release”这条路径还没用真实 tag 跑过。
 on:
   push:
     tags: ['v*']
@@ -69,6 +69,10 @@ jobs:
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Acceptance (stable release requires the full gate)
+        env:
+          # 维护者决定（2026-11-26）：截图和基线不一致时，PR 和 main 上失败，发布时只警告，差异图附在下面的产物里。
+          # PR 和 main 已经拦下真实回归和有意改动，发布时才出现的差异基本是 runner 镜像更新。
+          HACHI_UX_DIFF: warn
         run: |
           if [ "${{ steps.tag.outputs.prerelease }}" = "true" ]; then
             python3 tests/acceptance.py
@@ -96,6 +100,15 @@ jobs:
             echo
             cat build/acceptance/report.md
           } > dist/release-notes.md
+      - name: Screenshot diff (only when the screenshots differed from the baseline)
+        if: always() && hashFiles('build/acceptance/ux-diff/*-diff.png') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-ux-diff
+          path: |
+            build/acceptance/ux-diff/
+            build/acceptance/ux-candidate-baseline/
+          retention-days: 30
       - uses: actions/upload-artifact@v4
         with:
           name: release-dist

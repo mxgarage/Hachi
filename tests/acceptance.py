@@ -1,6 +1,7 @@
 """Automated acceptance: baseline checks + release-gate evaluation.
 
-Baseline (must pass on every PR): build, loopback lab, branding, UX screenshots, gate self-test, repo hygiene,
+Baseline (must pass on every PR): build, loopback lab, branding, UX screenshots and their pixel comparison with
+tests/ux-baseline/, gate self-test, repo hygiene,
 README gate heading consistent with the evaluated gate.
 Release gate (release-gate.json): each item is evaluated from evidence/ files.
 Missing or malformed evidence is reported as not met, never as a pass.
@@ -502,6 +503,9 @@ def main():
             baseline.append(run_step('loopback lab (tests/lab.py)', [py, 'tests/lab.py']))
             baseline.append(run_step('branding (tests/branding.py)', [py, 'tests/branding.py']))
             baseline.append(run_step('UX screenshots (tests/ux_screens.py)', [py, 'tests/ux_screens.py']))
+            if baseline[-1]['ok']:
+                baseline.append(run_step('UX screenshots match baseline (tests/ux_baseline.py)',
+                                         [py, 'tests/ux_baseline.py']))
         baseline.append(run_step('gate evaluator self-test (tests/gate_selftest.py)', [py, 'tests/gate_selftest.py']))
         baseline.append(hygiene())
     gate = evaluate_gate(args.release_commit)

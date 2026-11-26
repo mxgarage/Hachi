@@ -1,7 +1,17 @@
 name: Account-free macOS verification
-on: [push, pull_request]
+# PR 和 main 各跑一次即可：同一次分支推送不再在 push 和 pull_request 上重复跑 macOS job（docs/orchestration.md）。
+# 没开 PR 的分支可以在 Actions 页面手动运行。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  # 同一个 PR 连续推送时取消旧的运行；main 和手动运行按提交各自跑完。
+  group: verify-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   loopback:
     runs-on: macos-15
@@ -12,9 +22,9 @@ jobs:
           fetch-depth: 0  # gate evidence is checked against git history
       # evidence/ is maintainer-only (AGENTS.md). Agent branches or agent-authored commits that touch it fail.
       # Changes to the gate definition or automation (release-gate.json, tests/acceptance.py, tests/gate_selftest.py,
-      # .github/workflows/, .github/scripts/) by
-      # agents are flagged as a warning in the job summary for the maintainer to review (they may legitimately
-      # change, e.g. this tooling's own PRs). Runs on pull_request only; direct pushes are not covered.
+      # .github/workflows/, .github/scripts/) and to the UX screenshot baseline (tests/ux-baseline/) by agents are
+      # flagged as a warning in the job summary for the maintainer to review (they may legitimately change, e.g. this
+      # tooling's own PRs). Runs on pull_request only; direct pushes are not covered.
       # This catches honest mistakes; it cannot stop someone who rewrites branch names and trailers.
       - name: Evidence is maintainer-only
         if: github.event_name == 'pull_request'
@@ -25,7 +35,8 @@ jobs:
         run: |
           changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- evidence/ ':(exclude)evidence/README.md')
           gate=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- release-gate.json tests/acceptance.py tests/gate_selftest.py .github/workflows/ .github/scripts/ AGENTS.md evidence/README.md)
-          [ -z "$changed$gate" ] && exit 0
+          ux=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- tests/ux-baseline/ ':(exclude)tests/ux-baseline/README.md')
+          [ -z "$changed$gate$ux" ] && exit 0
           why=""
           case "$HEAD_REF" in claude/*|codex/*|muse/*) why="agent branch $HEAD_REF";; esac
           msgs=$(git log --format=%B "$BASE_SHA..$HEAD_SHA")
@@ -36,6 +47,10 @@ jobs:
           if [ -n "$gate" ]; then
             echo "::warning::gate definition changed by ($why); maintainer must check it does not loosen the gate: $(echo $gate)"
             { echo "### ⚠️ 门槛定义被代理改动，合并前请确认没有放宽条件"; echo "$gate" | sed 's/^/- /'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -n "$ux" ]; then
+            echo "::warning::UX screenshot baseline changed by ($why); the maintainer must look at the diff images before merging (AGENTS.md)"
+            { echo "### ⚠️ 代理改了截图基线，合并前请维护者本人看差异图（PR 正文应逐个列出变了的截图）"; echo "$ux" | sed 's/^/- /'; } >> "$GITHUB_STEP_SUMMARY"
           fi
           if [ -n "$changed" ]; then
             echo "::error::evidence/ changed by ($why). Only the maintainer commits evidence (AGENTS.md):"; echo "$changed"; exit 1
