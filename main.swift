@@ -275,6 +275,7 @@ func savePNG(_ view: NSView, appearance: NSAppearance, to url: URL) throws {
                                           bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                                           colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
               let context = NSGraphicsContext(bitmapImageRep: flat) else { failure = CocoaError(.fileWriteUnknown); return }
+        flat.size = rep.size  // keep the point size (and so the PNG's DPI) of the original capture
         NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = context
         let full = NSRect(x: 0, y: 0, width: rep.pixelsWide, height: rep.pixelsHigh)
         NSColor.windowBackgroundColor.setFill(); full.fill()
