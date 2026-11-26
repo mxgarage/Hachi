@@ -194,7 +194,14 @@ func setChecking(_ row: NSMenuItem, _ on: Bool) -> String {
 func makeAlert(_ result: Result) -> NSAlert {
     let alert = NSAlert()
     alert.messageText = "\(result.provider.capitalized)：\(result.status == "passed" ? "预检通过" : "预检未通过")"
-    alert.informativeText = result.evidence + "\n\n未启动客户端。浏览器 OAuth、MCP 和运行中拦截未覆盖。"
+    // "Blocked" only means the entry exited non-zero; Hachi cannot tell which of its checks failed. Say so, because a
+    // matching IP with observed_route=NOT OBSERVED (the entry's own output) reads like a contradiction otherwise.
+    var hint = ""
+    if result.status != "passed" && !result.evidence.hasPrefix("无法运行预检入口") {
+        hint = "\n\n“未通过”表示预检入口返回了失败，Hachi 只转述它的输出，不判断原因。IP 与 expected 一致也可能未通过：请看输出里哪一项没满足，例如 observed_route=NOT OBSERVED 表示没有观察到预期路由。"
+    }
+    alert.informativeText = result.evidence + hint
+        + "\n\n这只是预检：Hachi 没有启动客户端（“未启动客户端”不是失败原因）。浏览器 OAuth、MCP 和运行中拦截未覆盖。"
     return alert
 }
 

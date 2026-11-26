@@ -76,6 +76,10 @@ for n in ('alert-claude-passed', 'alert-claude-blocked', 'alert-codex-passed', '
     # it says nothing about what a real claude-safe / codex-safe prints. Those scripts are not in this repo.
     body = texts(n)[1]
     assert all(f in body for f in ('IP=', 'expected=', 'trace=', 'TLS=', 'observed_route=', 'CHECK-ONLY')), (n, body)
+for n in ('alert-claude-blocked', 'alert-codex-blocked'):
+    assert 'observed_route=NOT OBSERVED' in texts(n)[1] or '没有观察到预期路由' in texts(n)[1], n
+    assert '不是失败原因' in texts(n)[1], n
+assert '没有观察到预期路由' not in texts('alert-claude-passed')[1] and '没有观察到预期路由' not in texts('alert-entry-missing')[1]
 assert texts('alert-claude-passed')[0] == 'Claude：预检通过' and texts('alert-codex-blocked')[0] == 'Codex：预检未通过'
 assert manifest['tooltips'] == {'idle': 'Hachi · 观察模式（不拦截）', 'checking': 'Hachi · 预检中'}
 
