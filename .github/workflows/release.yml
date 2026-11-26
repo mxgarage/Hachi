@@ -1,0 +1,304 @@
+name: Release
+# 只由维护者触发；代理不打 tag、不发布（AGENTS.md）。三种触发方式（都要求操作者是维护者账号）：
+#   1) 维护者合并一个新增 docs/release-notes/v<版本>.md 的 PR（合并就是批准）：自动用文件名当 tag，在这次合并的提交上
+#      构建、创建 tag 和 release（正文 = 这份说明 + 验收报告）。已存在的 tag 不会重复发布，只改旧说明文件也不会触发。
+#   2) Actions → Release → Run workflow，version 留空：自动取下一个开发版本（最新的 v<x>-dev.N → N+1），
+#      或在 version 里写明（例如 v0.3-dev.1）；在 main 当前提交上发布。release 正文用 docs/release-notes/<tag>.md（有的话）。
+#   3) 维护者手动推 v* tag（原来的方式）。
+# tag 是在构建通过之后，由最后的发布 job 随 release 一起创建的：构建失败不会留下孤零零的 tag。
+# tag 格式：v<CFBundleShortVersionString>，例如 v0.2；tag 指向的提交必须已经在 main 上（即走过 PR）。
+#   带后缀（v0.2-dev.1、v0.3-rc.1）→ 预发布，标明“未通过发布门槛”，发布门槛不满足也能发。
+#   不带后缀（v0.2）→ 正式发布，必须 `tests/acceptance.py --require-gate --release-commit <tag 提交>` 通过：
+#   每份证据的 tested_commit 是 tag 提交的祖先，且之后产品代码没改过。否则失败、不发布。
+# 产物为 ad-hoc 签名（未经 Apple 公证）的 Hachi.app zip，附 SHA-256 和验收报告。
+# 构建 job 只读；只有最后的发布 job 有写权限，且不运行仓库里的代码。
+# 如果这个 tag 已经有 release（例如维护者在网页上手动建的），安装包会挂到那个 release 上，不再另建草稿。
+# 手动运行（Actions → Release → Run workflow，填已有的 tag）：为已有 tag 重新构建并补挂安装包。
+#   已发布的 release 只补挂缺少的文件，不替换已有的同名文件；草稿上的同名文件会被替换（新的 SHA-256 写在 job summary）。稳定 tag 仍要求等于当前 main HEAD，main 前进后旧的稳定 tag 无法这样补挂。
+#   2026-11-25 用 v0.2-dev.1 手动运行过一次，挂到了已发布的 release 上；“推 tag 时已有 release”这条路径还没用真实 tag 跑过。
+on:
+  push:
+    tags: ['v*']
+    branches: [main]
+    paths: ['docs/release-notes/v*.md']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '新版本的 tag，例如 v0.3-dev.1；留空 = 自动取下一个开发版本（最新 v*-dev.N 加一）。在 main 当前提交上发布'
+        required: false
+      tag:
+        description: '（补挂用）已有的 tag，例如 v0.2-dev.1：重新构建，并把安装包挂到这个 tag 的 release 上；填了它就忽略 version'
+        required: false
+permissions:
+  contents: read
+jobs:
+  prepare:
+    # 发布只接受维护者账号触发的运行；Claude GitHub App（claude[bot]）等其他主体的运行直接跳过（build 依赖本 job，随之跳过）。
+    # 注意：代理如果用维护者账号操作，这里区分不出来，仍然靠约定（AGENTS.md）。
+    if: github.actor == 'daniel-to-the-moon'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read  # 只读：算出要发布哪个 tag、哪个提交；不创建 tag，不运行仓库里的代码
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      sha: ${{ steps.plan.outputs.sha }}
+      skip: ${{ steps.plan.outputs.skip }}
+    steps:
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          BEFORE: ${{ github.event.before }}
+          IN_TAG: ${{ inputs.tag }}
+          IN_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          re='^v[0-9][0-9A-Za-z.-]*$'
+          existing_sha() {  # commit of an existing tag; empty if there is none (404). Any other error aborts the run.
+            local obj type err
+            if ! obj=$(gh api "repos/$GH_REPO/git/ref/tags/$1" --jq '.object.sha+" "+.object.type' 2>&1); then
+              if grep -q 'Not Found\|HTTP 404' <<<"$obj"; then return 0; fi
+              echo "::error::could not look up tag $1: $obj" >&2; return 1
+            fi
+            type=${obj#* }; obj=${obj%% *}
+            if [ "$type" = tag ]; then obj=$(gh api "repos/$GH_REPO/git/tags/$obj" --jq .object.sha); fi
+            echo "$obj"
+          }
+          emit() { echo "tag=$1" >> "$GITHUB_OUTPUT"; echo "sha=$2" >> "$GITHUB_OUTPUT"; echo "skip=$3" >> "$GITHUB_OUTPUT"; }
+          if [ "$REF_TYPE" = tag ]; then emit "$REF_NAME" "$SHA" false; exit 0; fi  # a pushed v* tag (the original way)
+          if [ -n "$IN_TAG" ]; then  # re-attach to an existing tag
+            [[ "$IN_TAG" =~ $re ]] || { echo "::error::$IN_TAG is not a v* tag"; exit 1; }
+            sha=$(existing_sha "$IN_TAG")
+            [ -n "$sha" ] || { echo "::error::tag $IN_TAG does not exist; leave 'tag' empty to create a new version"; exit 1; }
+            emit "$IN_TAG" "$sha" false; exit 0
+          fi
+          # From here on a new tag is created, on the commit of this run, which must be on main.
+          [ "$REF_NAME" = main ] || { echo "::error::new versions are released from main only (this run is on $REF_NAME)"; exit 1; }
+          if [ "$EVENT" = push ]; then  # a merge that added docs/release-notes/v*.md
+            # Everything this push brought in (a merge commit, a rebase merge or several commits), not just the last commit.
+            if [[ "$BEFORE" =~ ^0+$ ]]; then base_ref="$SHA^"; else base_ref="$BEFORE"; fi
+            files=$(gh api "repos/$GH_REPO/compare/${base_ref}...$SHA" --jq '.files[]|select(.status=="added")|.filename' \
+              | grep -E '^docs/release-notes/v[0-9][0-9A-Za-z.-]*\.md$' || true)
+            if [ -z "$files" ]; then echo "No new release-notes file in this push; nothing to release."; emit "" "$SHA" true; exit 0; fi
+            if [ "$(wc -l <<<"$files")" -gt 1 ]; then
+              echo "::error::this push adds more than one release-notes file; add one version per merge:"$'\n'"$files"; exit 1
+            fi
+            file=$files
+            tag=$(basename "$file" .md)
+          elif [ -n "$IN_VERSION" ]; then
+            tag=$IN_VERSION
+          else  # suggest the next dev version: the newest v<x>-dev.N becomes v<x>-dev.N+1
+            last=$(gh api --paginate "repos/$GH_REPO/tags?per_page=100" --jq '.[].name' | grep -E '^v[0-9][0-9A-Za-z.]*-dev\.[0-9]+$' | sort -V | tail -n 1 || true)
+            [ -n "$last" ] || { echo "::error::no v*-dev.N tag to continue from; give 'version' explicitly (e.g. v0.3-dev.1)"; exit 1; }
+            base="${last%-dev.*}"
+            stable=$(existing_sha "$base")
+            if [ -n "$stable" ]; then echo "::error::$base is already released; give 'version' explicitly for the next version"; exit 1; fi
+            tag="$base-dev.$(( ${last##*-dev.} + 1 ))"
+            echo "Suggested next version: $tag (after $last)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          [[ "$tag" =~ $re ]] || { echo "::error::$tag is not a valid tag (v<version>[-suffix])"; exit 1; }
+          found=$(existing_sha "$tag")  # a failed lookup (not 404) stops the run here
+          if [ -n "$found" ]; then
+            if [ "$EVENT" = push ]; then echo "Tag $tag already exists; nothing to release."; emit "" "$SHA" true; exit 0; fi
+            echo "::error::tag $tag already exists; use the 'tag' input to re-attach files to it"; exit 1
+          fi
+          emit "$tag" "$SHA" false
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
+    # One build per tag at a time (a group queues at most one waiting run, so keying it on the tag, not on the branch,
+    # keeps two merged release-notes files from replacing each other).
+    concurrency:
+      group: release-build-${{ needs.prepare.outputs.tag }}
+      cancel-in-progress: false
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      PLAN_SHA: ${{ needs.prepare.outputs.sha }}
+    outputs:
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+      tag: ${{ steps.tag.outputs.tag }}
+      sha: ${{ steps.tag.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.sha }}
+      - name: Tag is on main and matches app version
+        id: tag
+        run: |
+          # The tag may not exist yet (it is created together with the release, after this build passes).
+          if ! [[ "$TAG" =~ ^v[0-9][0-9A-Za-z.-]*$ ]]; then echo "::error::$TAG is not a v* tag"; exit 1; fi
+          sha=$PLAN_SHA
+          if [ "$sha" != "$(git rev-parse HEAD)" ]; then echo "::error::checkout does not match the planned commit for $TAG"; exit 1; fi
+          echo "SHA=$sha" >> "$GITHUB_ENV"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "::error::tag $TAG points to a commit that is not on main; merge through a PR first"; exit 1
+          fi
+          tag="$TAG"
+          version=$(python3 -c "import re;print(re.search(r\"CFBundleShortVersionString='([^']+)'\", open('build.py').read()).group(1))")
+          base="${tag#v}"; base="${base%%-*}"
+          if [ "$base" != "$version" ]; then
+            echo "::error::tag $tag does not match CFBundleShortVersionString $version"; exit 1
+          fi
+          if [ "$tag" = "v$version" ]; then
+            # a stable release must be cut from the current main, not an older commit on its history
+            if [ "$sha" != "$(git rev-parse origin/main)" ]; then
+              echo "::error::stable tag $tag must point to the current origin/main"; exit 1
+            fi
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Acceptance (stable release requires the full gate)
+        env:
+          # 维护者决定（2026-11-26）：截图和基线不一致时，PR 和 main 上失败，发布时只警告，差异图附在下面的产物里。
+          # PR 和 main 已经拦下真实回归和有意改动，发布时才出现的差异基本是 runner 镜像更新。
+          HACHI_UX_DIFF: warn
+        run: |
+          if [ "${{ steps.tag.outputs.prerelease }}" = "true" ]; then
+            python3 tests/acceptance.py
+          else
+            python3 tests/acceptance.py --require-gate --release-commit "$SHA"
+          fi
+      - name: Sign (ad-hoc) and package
+        run: |
+          codesign --force --deep --sign - build/Hachi.app
+          codesign --verify --deep --strict build/Hachi.app
+          mkdir -p dist
+          zip="dist/Hachi-${TAG}-macos.zip"
+          ditto -c -k --keepParent build/Hachi.app "$zip"
+          (cd dist && shasum -a 256 "$(basename "$zip")" > "$(basename "$zip").sha256")
+          {
+            if [ -f "docs/release-notes/${TAG}.md" ]; then  # the maintainer-reviewed notes lead the release body
+              cat "docs/release-notes/${TAG}.md"
+              printf '\n\n---\n\n'
+            fi
+            if [ "${{ steps.tag.outputs.prerelease }}" = "true" ]; then
+              met=$(python3 -c "import json;g=json.load(open('build/acceptance/report.json'))['gate'];print(f\"{sum(x['met'] for x in g)}/{len(g)}\")")
+              echo "> **开发预发布。** 本次评估发布门槛满足 ${met} 项；预发布不要求门槛，只用于试用和测试。"
+              echo
+            else
+              echo "> 发布门槛的\"满足\"是维护者提交的证据通过了格式、阈值和 git 历史检查，不是 CI 对实验结果的独立验证（见 evidence/README.md）。"
+              echo
+            fi
+            echo "ad-hoc 签名，未经 Apple 公证：首次打开需在 Finder 里右键 → 打开。Hachi 只提醒当前的网络出口位置，不改变平台账号资格，也不帮人绕开地区限制。"
+            echo
+            cat build/acceptance/report.md
+          } > dist/release-notes.md
+      - name: Screenshot diff (only when the screenshots differed from the baseline)
+        if: always() && hashFiles('build/acceptance/ux-diff/*-diff.png') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-ux-diff
+          path: |
+            build/acceptance/ux-diff/
+            build/acceptance/ux-candidate-baseline/
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-dist
+          path: dist/
+          retention-days: 7
+  publish:
+    needs: build
+    # 维护者决定（2026-11-25）：推 tag 自动发布，但要审批。审批靠 Settings → Environments → release 的
+    # required reviewers。失败时关闭：如果读不到这个审批规则（没配，或这个套餐用不了），只建 draft release，
+    # 由维护者在 Releases 页面手动发布。
+    environment: release
+    concurrency:
+      group: release-publish-${{ needs.build.outputs.tag }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: read  # read the release environment's protection rules
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-dist
+          path: dist
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+          TAG: ${{ needs.build.outputs.tag }}
+          TARGET_SHA: ${{ needs.build.outputs.sha }}
+        run: |
+          assets=(dist/Hachi-*-macos.zip dist/Hachi-*-macos.zip.sha256)
+          # The acceptance report travels as an asset too, so a release whose notes were written by hand still
+          # shows the gate status (for a suffixed tag: not met).
+          cp dist/release-notes.md "dist/Hachi-${TAG}-acceptance.md"
+          upload_to() {  # attach the assets to an existing release, by id; mode "add" never replaces a file
+            local id=$1 mode=$2 extra=$3 f n old
+            for f in "${assets[@]}" "$extra"; do
+              n=$(basename "$f")
+              old=$(gh api "repos/$GH_REPO/releases/$id/assets" --jq ".[] | select(.name == \"$n\") | .id")
+              if [ -n "$old" ] && [ "$mode" = add ]; then
+                echo "- kept the published \`$n\` (not replaced)" >> "$GITHUB_STEP_SUMMARY"; continue
+              fi
+              [ -n "$old" ] && gh api -X DELETE "repos/$GH_REPO/releases/assets/$old"
+              [ -n "$old" ] && echo "- replaced \`$n\`" >> "$GITHUB_STEP_SUMMARY"
+              gh api -X POST "https://uploads.github.com/repos/$GH_REPO/releases/$id/assets?name=$n" \
+                -H 'Content-Type: application/octet-stream' --input "$f" --jq .browser_download_url
+            done
+            echo "SHA-256 of this build: \`$(cut -d' ' -f1 dist/Hachi-*-macos.zip.sha256)\`" >> "$GITHUB_STEP_SUMMARY"
+          }
+          # 1) A release for this tag already exists (e.g. created by hand on the Releases page): attach the app
+          #    there instead of creating a second, draft release. Its title and notes are left as written; a
+          #    suffixed tag is still marked as a prerelease and not as latest. On a published release only missing
+          #    files are added: a file people may already have downloaded and checked is never replaced.
+          published=$(gh api "repos/$GH_REPO/releases/tags/$TAG" --jq .id 2>/dev/null || true)
+          drafts=$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id")
+          draft=${drafts%%$'\n'*}  # first one; no pipe into head (SIGPIPE under pipefail)
+          [[ "$published" =~ ^[0-9]+$ ]] || published=""  # 404 for no published release
+          [[ "$draft" =~ ^[0-9]+$ ]] || draft=""
+          if [ -n "$published" ]; then
+            upload_to "$published" add "dist/Hachi-${TAG}-acceptance.md"
+            if [ "$PRERELEASE" = "true" ]; then
+              gh api -X PATCH "repos/$GH_REPO/releases/$published" -F prerelease=true -f make_latest=false --silent
+            fi
+            echo "Attached the app to the existing release for $TAG." >> "$GITHUB_STEP_SUMMARY"
+            if [ -n "$draft" ]; then
+              echo "::warning::tag $TAG also has a draft release (id $draft); it was left untouched. Delete it from the Releases page if it is not needed."
+              echo "⚠️ 这个 tag 上还有一个草稿 release 没有处理，不需要的话请在 Releases 页面删除。" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            exit 0
+          fi
+          if [ -n "$draft" ]; then
+            upload_to "$draft" replace "dist/Hachi-${TAG}-acceptance.md"
+            echo "Attached the app to the existing draft release for $TAG; publish it from the Releases page." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          flags=()
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          # Fail closed: publish directly only if this environment really has required reviewers (so a person
+          # approved this job). Otherwise, or if the rules cannot be read, create a draft for the maintainer.
+          reviewers=$(gh api "repos/$GH_REPO/environments/release" \
+            --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length' 2>/dev/null || echo 0)
+          # A pre-release is published directly: the maintainer's own action (merging the release-notes PR, or Run
+          # workflow / pushing the tag) is the approval, and it is only offered as a trial build. A stable release
+          # keeps the fail-closed rule above.
+          if [ "$PRERELEASE" != "true" ] && [ "${reviewers:-0}" -lt 1 ]; then
+            flags+=(--draft)
+            echo "::warning::release environment has no required reviewers (or they could not be read); created a draft release. Publish that draft by hand from the Releases page."
+            {
+              echo "### 已创建草稿 release：Hachi $TAG"
+              echo "在 Releases 页面找到这个草稿（安装包已经挂在上面），点编辑 → Publish release。"
+              echo "不要另建一个新的 release，否则安装包留在草稿上，你发布的那个没有安装包。"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          # No --verify-tag: for a new version this creates the tag, on the commit that was built.
+          gh release create "$TAG" --target "$TARGET_SHA" --title "Hachi $TAG" \
+            --notes-file dist/release-notes.md "${flags[@]}" "${assets[@]}"
