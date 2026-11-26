@@ -6,7 +6,9 @@ and dark appearance (`tests/ux_screens.py`, artifact `hachi-<sha>` → `acceptan
 screenshots to compare against what you see. CI also compares every screenshot pixel for pixel with the stored
 baseline in `tests/ux-baseline/` (`tests/ux_baseline.py`) and fails on any difference, with diff images in
 `acceptance/ux-diff/index.html`. That only proves nothing changed by accident since the baseline was accepted; it
-does not prove the screens are right, and it does not replace this walkthrough or the maintainer's sign-off. CI
+does not prove the screens are right, and it does not replace this walkthrough or the maintainer's sign-off. Two things in the screenshots are not what the running app does: the alert icon is drawn directly from the
+artwork (the app shows its app icon, built from the same artwork), and the precheck text in alerts is a hand-written
+example, not output from a real `claude-safe` / `codex-safe`. CI
 draws the menu from the real menu items, so it cannot show how the system menu bar itself looks or behaves. That
 part is only covered by this walkthrough.
 

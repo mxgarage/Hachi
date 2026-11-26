@@ -311,13 +311,15 @@ func renderUI(into dir: URL) throws {
     func alertState(_ name: String, _ result: Result) -> (String, NSView, [String]) {
         let alert = makeAlert(result)
         // The default alert icon (the app icon) is loaded asynchronously and is sometimes still a placeholder when
-        // drawn offscreen; draw the same artwork synchronously so the screenshots are stable.
+        // drawn offscreen; draw the same artwork synchronously so the screenshots are stable. The running app keeps the
+        // default (the app icon, Hachi.icns, rendered from this same hachiIcon(badge: true) by build.py).
         alert.icon = hachiIcon(size: 128, badge: true)
         alert.layout()
         return (name, alert.window.contentView!, [alert.messageText, alert.informativeText])
     }
-    // Same shape as a real claude-safe / codex-safe --check-only output, so the screenshots show how a long,
-    // multi-line result wraps. Documentation addresses only (RFC 5737); labelled as an example in the alert itself.
+    // Hand-written after a real claude-safe --check-only dialog the maintainer shared (2026-11-25), so the screenshots
+    // show how a long, multi-line result wraps. The entry scripts are not in this repo, so nothing checks that their
+    // output still looks like this. Documentation addresses only (RFC 5737); labelled as an example in the alert.
     func example(_ host: String, passed: Bool) -> String {
         let ip = passed ? "203.0.113.10" : "198.51.100.7"
         let verdict = passed
