@@ -1,8 +1,8 @@
 {
-  "runner_image": "macos15 20261123.0558.1",
+  "runner_image": "macos15 20261118.0550.1",
   "macos": "15.8.2",
   "arch": "arm64",
-  "rendered_at_commit": "cad0d3198697c0a3e31c3e41f100c3adea5addd9",
+  "rendered_at_commit": "879a42dbea4bf467548b1f80174cfd656f134c55",
   "files": [
     "alert-claude-blocked-dark.png",
     "alert-claude-blocked-light.png",
