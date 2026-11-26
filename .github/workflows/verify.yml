@@ -1,7 +1,17 @@
 name: Account-free macOS verification
-on: [push, pull_request]
+# PR 和 main 各跑一次即可：同一次分支推送不再在 push 和 pull_request 上重复跑 macOS job（docs/orchestration.md）。
+# 没开 PR 的分支可以在 Actions 页面手动运行。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  # 同一个 PR 连续推送时取消旧的运行；main 和手动运行按提交各自跑完。
+  group: verify-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   loopback:
     runs-on: macos-15
