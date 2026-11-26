@@ -2,9 +2,19 @@ name: Claude PR review
 # 只在 PR 上运行，只发评论，不改代码、不合并。
 # 需要维护者在仓库 Secrets 里添加 CLAUDE_CODE_OAUTH_TOKEN（或 ANTHROPIC_API_KEY）；
 # 没有密钥时这个工作流会跳过评审步骤，不会失败。
+# 模型调度（docs/orchestration.md）：评审用 Sonnet；纯文档 PR 不触发，只由 Codex 评审。
+# 除规则文件（AGENTS.md、evidence/README.md、PR 模板、G6 走查清单 docs/ux-checklist.md）外，只改 Markdown 和 docs/ 的 PR 算纯文档。
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!**/*.md'
+      - 'AGENTS.md'
+      - 'evidence/README.md'
+      - 'docs/ux-checklist.md'
+      - '.github/pull_request_template.md'
 permissions:
   contents: read
   pull-requests: write
@@ -42,4 +52,5 @@ jobs:
             Post one summary comment in Chinese, with inline comments for specific lines.
             Do not push commits, approve, or merge.
           claude_args: |
+            --model sonnet
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
