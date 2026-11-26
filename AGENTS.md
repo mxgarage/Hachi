@@ -19,7 +19,7 @@
 - 自动验收：`verify.yml` 每次运行 `tests/acceptance.py`（构建、测试、仓库卫生检查，并按 `release-gate.json` 评估发布门槛），报告写进 job summary，app 和报告作为产物上传。
 - 自迭代：`acceptance-backlog.yml` 每周和门槛/证据变化时运行，给每个未满足的门槛项保持一条 `acceptance` issue，格式检查通过后在 issue 里注明、由维护者确认并手动关闭，之后又不满足（例如证据过期）会重新打开。它不打 `claude` 标签；维护者看过后自己打标签，才会让 Claude 开始实现。
 - 范围决定：维护者 2026-11-25 在项目讨论里确认，G2–G5 按原门槛保留，维护者给对应 issue 打 `claude` 标签后可以交给 Claude 实现（`release-gate.json` 里 `agent_ok: true`）。实验仍只用合成账号、本地夹具和隔离网络。
-- 体验验收（G6，维护者 2026-11-25 决定加入）：CI 渲染每个菜单和提醒状态的截图（`tests/ux_screens.py`），维护者本人在真机上按 `docs/ux-checklist.md` 走查并签字（`agent_ok: false`）。代理可以修走查发现的问题、维护截图脚本，但不能代签，也不能为了通过而删减清单项。CI 还把每张截图和 `tests/ux-baseline/` 里的基线逐像素比较，有差异就失败（`tests/ux_baseline.py`）。界面有意改动时，代理可以在同一个 PR 里更新基线，并在 PR 正文逐个列出变了的截图文件和原因；这类 PR 由维护者本人看过差异图再合并，代理评审不算数；基线只能取自 CI 渲染结果，不能用本机截图，也不能为了让 CI 变绿而更新没解释过的差异。
+- 体验验收（G6，维护者 2026-11-25 决定加入）：CI 渲染每个菜单和提醒状态的截图（`tests/ux_screens.py`），维护者本人在真机上按 `docs/ux-checklist.md` 走查并签字（`agent_ok: false`）。代理可以修走查发现的问题、维护截图脚本，但不能代签，也不能为了通过而删减清单项。CI 还把每张截图和 `tests/ux-baseline/` 里的基线逐像素比较，有差异就失败（`tests/ux_baseline.py`）。界面有意改动时，代理可以在同一个 PR 里更新基线，并在 PR 正文逐个列出变了的截图文件和原因；这类 PR 由维护者本人看过差异图再合并，代理评审不算数（这是约定：CI 拿 PR 自带的基线比较，界面和基线一起改照样会绿，代理改基线时只给警告）；基线只能取自 CI 渲染结果，不能用本机截图，也不能为了让 CI 变绿而更新没解释过的差异。
 - 发布：**推 `v*` tag 就等于发布**，`release.yml` 只接受维护者账号推的 tag。代理不得创建或推送任何 tag。无后缀 tag（`v0.2`）要求门槛全部满足，否则不发布；带后缀 tag（`v0.2-dev.1`）发预发布并标明未通过门槛。真正创建 Release 的 job 绑定 `release` environment，需要在仓库设置里给它配审批人才会停下来等审批；没配（或读不到审批规则）时只建 draft release，由维护者手动发布。截至 2026-11-25，这个私有仓库的套餐不提供 environment 审批人（`release` 环境已建，但没有 Required reviewers 选项），所以实际行为是：推 tag 只生成 draft，由维护者在 Releases 页面手动点发布。
 - 不自动做的：合并、打 tag 和发布、改仓库设置和密钥。这些由维护者决定。
 - 不用真实 Claude/Codex/其他平台账号做故障实验。
