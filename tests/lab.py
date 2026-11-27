@@ -1,11 +1,13 @@
 """Loopback-only fixture; never starts an official client or reads credentials."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 from pathlib import Path
 import subprocess
 import threading
 
-APP = Path(__file__).resolve().parents[1] / 'build/Hachi.app/Contents/MacOS/Hachi'
+# HACHI_APP: test an already-built (e.g. downloaded, signed) Hachi.app instead of build/Hachi.app
+APP = Path(os.environ.get('HACHI_APP') or Path(__file__).resolve().parents[1] / 'build/Hachi.app') / 'Contents/MacOS/Hachi'
 CASES = dict(approved=(200, {'route': 'lab-approved'}, 'matched'), drift=(200, {'route': 'lab-other'}, 'mismatch'), malformed=(200, 'not-json', 'unknown'), outage=(503, {}, 'unknown'), redirect=(302, {}, 'unknown'), oversize=(200, {'route': 'lab-approved', 'pad': 'x' * 2048}, 'unknown'))
 seen = []
 

@@ -1,11 +1,13 @@
 from pathlib import Path
 import json
+import os
 import plistlib
 import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[1]
-contents = root / 'build/Hachi.app/Contents'
+# HACHI_APP: test an already-built (e.g. downloaded, signed) Hachi.app instead of build/Hachi.app
+contents = Path(os.environ.get('HACHI_APP') or root / 'build/Hachi.app') / 'Contents'
 binary = contents / 'MacOS/Hachi'
 assert contents.is_dir(), 'Hachi.app has not been built'
 info = plistlib.loads((contents / 'Info.plist').read_bytes())
