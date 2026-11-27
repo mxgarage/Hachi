@@ -11,6 +11,9 @@ name: Release
 #   不带后缀（v0.2）→ 正式发布，必须 `tests/acceptance.py --require-gate --release-commit <tag 提交>` 通过：
 #   每份证据的 tested_commit 是 tag 提交的祖先，且之后产品代码没改过。否则失败、不发布。
 # 产物为 ad-hoc 签名（未经 Apple 公证）的 Hachi.app zip，附 SHA-256 和验收报告。
+# 只有一个包：通用二进制（arm64 + x86_64，macOS 13 及以上）。构建后，这个签好名的 zip（同一份字节，先核对 SHA-256）
+# 会分别在 Apple 芯片（macos-15）和 Intel（macos-15-intel）runner 上解压、真实启动并跑 lab/branding 测试
+# （tests/verify_package.py）；任何一边失败都不发布。发布说明写明支持的架构。
 # 构建 job 只读；只有最后的发布 job 有写权限，且不运行仓库里的代码。
 # 如果这个 tag 已经有 release（例如维护者在网页上手动建的），安装包会挂到那个 release 上，不再另建草稿。
 # 手动运行（Actions → Release → Run workflow，填已有的 tag）：为已有 tag 重新构建并补挂安装包。
@@ -191,6 +194,8 @@ jobs:
               echo "> 发布门槛的\"满足\"是维护者提交的证据通过了格式、阈值和 git 历史检查，不是 CI 对实验结果的独立验证（见 evidence/README.md）。"
               echo
             fi
+            echo "**支持的 Mac：** Apple 芯片（arm64）和 Intel（x86_64）都可以用，同一个通用包，需要 macOS 13 或更新。发布前这个 zip 已在 Apple 芯片和 Intel 的 runner 上各解压、启动并通过测试。"
+            echo
             echo "ad-hoc 签名，未经 Apple 公证：首次打开需在 Finder 里右键 → 打开。Hachi 只提醒当前的网络出口位置，不改变平台账号资格，也不帮人绕开地区限制。"
             echo
             cat build/acceptance/report.md
@@ -209,8 +214,43 @@ jobs:
           name: release-dist
           path: dist/
           retention-days: 7
-  publish:
+  # The package that will be published, launched on each supported architecture. Same zip, same bytes.
+  verify-package:
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x86_64
+            runner: macos-15-intel
+    name: launch on ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    env:
+      TAG: ${{ needs.build.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-dist
+          path: dist
+      - name: Unpack the signed zip and launch it on this architecture
+        run: |
+          [ "$(uname -m)" = "${{ matrix.arch }}" ] || { echo "::error::runner is $(uname -m), expected ${{ matrix.arch }}"; exit 1; }
+          (cd dist && shasum -a 256 -c "Hachi-${TAG}-macos.zip.sha256")
+          mkdir unpacked
+          ditto -x -k "dist/Hachi-${TAG}-macos.zip" unpacked
+          python3 tests/verify_package.py unpacked/Hachi.app --archs arm64,x86_64 | tee verify-${{ matrix.arch }}.txt
+          {
+            echo "### ${{ matrix.arch }}：安装包启动验证通过"
+            echo '```'; cat verify-${{ matrix.arch }}.txt; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+  publish:
+    needs: [build, verify-package]
     # 维护者决定（2026-11-25）：推 tag 自动发布，但要审批。审批靠 Settings → Environments → release 的
     # required reviewers。失败时关闭：如果读不到这个审批规则（没配，或这个套餐用不了），只建 draft release，
     # 由维护者在 Releases 页面手动发布。

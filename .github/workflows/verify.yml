@@ -73,3 +73,24 @@ jobs:
             build/acceptance/
           if-no-files-found: warn
           retention-days: 14
+  # The release ships one universal app. Build it and launch it on both Apple silicon and Intel on every PR, so a change
+  # that breaks one architecture is caught here and not at release time. (UX screenshots stay on the single job above:
+  # they are pixel-exact and the baseline comes from one runner type.)
+  launch:
+    name: launch on ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x86_64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          python3 build.py
+          codesign --force --deep --sign - build/Hachi.app
+          python3 tests/verify_package.py build/Hachi.app --archs arm64,x86_64

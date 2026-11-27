@@ -8,7 +8,7 @@ Development prototype (the repository is public since 2026-11-26; the app is uns
 
 ## Build / test
 
-Requirements: macOS, Apple command-line tools, and Python 3.9+.
+Requirements: macOS, Apple command-line tools, and Python 3.9+. The app is a universal binary (Apple silicon `arm64` and Intel `x86_64`, macOS 13 or later); the single release package is launched on both architectures before it is published (`tests/verify_package.py`). v0.2-dev.2 and earlier were arm64-only.
 
 ```sh
 python3 build.py
