@@ -1,5 +1,10 @@
 """Launch check for a built Hachi.app on the machine it runs on.
 
+Each runner runs only the slice for its own architecture (arm64 on Apple silicon, x86_64 on Intel); together the two
+runs cover both. "Launch" means the process starts and is still alive 5 s later; it does not prove the menu-bar item
+was created (a headless runner has nothing visible to assert on).
+If the app was built with HACHI_ARCHS (a single architecture), pass --archs to match.
+
 usage: verify_package.py PATH/TO/Hachi.app [--archs arm64,x86_64]
 
 Used by the release workflow on an Apple silicon and an Intel runner, against the very zip that will be published,
@@ -38,7 +43,7 @@ print('OK: codesign --verify --deep --strict')
 subprocess.run([str(binary), '--wag-frame', '0', 'false'], check=True, capture_output=True, timeout=20)
 print(f'OK: {host} slice executes')
 
-# launch it for real: it must still be running a few seconds later
+# launch the process: it must still be running a few seconds later (not a check of the menu-bar item)
 p = subprocess.Popen([str(binary)], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 try:
     time.sleep(5)

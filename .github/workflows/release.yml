@@ -194,7 +194,8 @@ jobs:
               echo "> 发布门槛的\"满足\"是维护者提交的证据通过了格式、阈值和 git 历史检查，不是 CI 对实验结果的独立验证（见 evidence/README.md）。"
               echo
             fi
-            echo "**支持的 Mac：** Apple 芯片（arm64）和 Intel（x86_64）都可以用，同一个通用包，需要 macOS 13 或更新。发布前这个 zip 已在 Apple 芯片和 Intel 的 runner 上各解压、启动并通过测试。"
+            # This sentence is true only because `publish` needs `verify-package`; keep that dependency (or drop the sentence).
+            echo "**支持的 Mac：** Apple 芯片（arm64）和 Intel（x86_64）都可以用，同一个通用包，按 macOS 13.0 部署目标编译，只在 macOS 15 上验证过。发布前这个 zip 已分别在 Apple 芯片和 Intel 的 runner 上解压、启动（进程保持运行）并通过 lab/branding 测试。"
             echo
             echo "ad-hoc 签名，未经 Apple 公证：首次打开需在 Finder 里右键 → 打开。Hachi 只提醒当前的网络出口位置，不改变平台账号资格，也不帮人绕开地区限制。"
             echo
@@ -239,6 +240,7 @@ jobs:
           name: release-dist
           path: dist
       - name: Unpack the signed zip and launch it on this architecture
+        shell: bash  # explicit bash = -eo pipefail: a failing verify_package.py must fail the step even through `| tee`
         run: |
           [ "$(uname -m)" = "${{ matrix.arch }}" ] || { echo "::error::runner is $(uname -m), expected ${{ matrix.arch }}"; exit 1; }
           (cd dist && shasum -a 256 -c "Hachi-${TAG}-macos.zip.sha256")
