@@ -4,6 +4,8 @@
 
 Hachi (ハチ) is a little watchdog for macOS. The menu-bar dog continuously wags its tail while running and stays still with macOS Reduce Motion. The animation is decorative, not a network health indicator. [Read the market research and sources](docs/market-research.md).
 
+**Scope:** Hachi only tells you where your network exit currently is, and (once enforcement exists) cuts the connection safely when the approved path fails. It does not change account eligibility, help with region restrictions, or promise any account outcome. See the [threat model](docs/threat-model.md) for what is and is not covered, and what is still unverified, and the [scope FAQ](docs/scope-faq.md) for plain answers. Requests outside this scope are closed.
+
 Development prototype (the repository is public since 2026-11-26; the app is unsigned by Apple and not notarized). A native macOS menu-bar app; it observes macOS network-path availability and optionally invokes already-installed `claude-safe` / `codex-safe` preflight adapters on demand. It does **not** enforce runtime network policy or cover browser authorization or MCP. It has no login-item registration, telemetry, automatic credential use, runtime blocking or third-party dependency. Network availability is not proof of a verified egress IP.
 
 ## Build / test
