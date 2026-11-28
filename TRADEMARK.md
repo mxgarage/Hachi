@@ -9,9 +9,14 @@ project's names or artwork. This policy says what you may do with them.
 
 ## What is covered
 
-- The names **Hachi** and **小八** (Hachi / ハチ) as the name of a software product.
-- The Hachi dog logo, menu-bar animation and character artwork under
-  `docs/assets/` and in the app bundle.
+- The names **Hachi** and **小八**, as the name of a software product. (ハチ is
+  only the Japanese reading and is not separately claimed.)
+- The Hachi dog logo and character, as a brand: the artwork in
+  `docs/assets/`, `docs/hachi.png` and the app bundle.
+
+The copyright in these files is covered by Apache-2.0 like the rest of the
+repository, so you may copy and modify them as the license says. What this
+policy limits is using them as a **brand** for your own product.
 
 ## What you may do without asking
 
