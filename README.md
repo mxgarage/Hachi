@@ -37,3 +37,7 @@ Automated checking: the gate is kept in machine-readable form in [`release-gate.
 Scope: compliant network reliability only, not altering provider account eligibility or bypassing platform enforcement. No private IP/config, account tokens, device paths, or live test credentials belong in the repo.
 
 Contributing: all changes go through pull requests, including the maintainer's own; merges are manual. See [AGENTS.md](AGENTS.md) for the merge gate and what runs automatically (CI and acceptance, Codex and Claude PR review, and Claude implementation for issues labeled `claude` or comments starting with `@claude`), and [docs/orchestration.md](docs/orchestration.md) for the end-to-end flow, the model routing rule (Opus for lead decisions and the hardest logic, Sonnet for implementation from clear specs, review fixes, PR review and the daily report, Haiku for coordination, Codex for second-opinion review) and the daily usage review. PRs that change the screenshot baseline list every changed screenshot and are merged only after the maintainer has looked at the diff images.
+
+## License
+
+Hachi is licensed under the [Apache License 2.0](LICENSE) (see also [NOTICE](NOTICE)). The Apache license does not cover the Hachi / 小八 names or the dog logo and artwork; see the [trademark policy](TRADEMARK.md). Planned enterprise modules, if any, will live in a separate repository.
