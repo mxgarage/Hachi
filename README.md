@@ -40,4 +40,4 @@ Contributing: all changes go through pull requests, including the maintainer's o
 
 ## License
 
-Hachi is licensed under the [Apache License 2.0](LICENSE) (see also [NOTICE](NOTICE)). The Apache license grants no rights to the Hachi / 小八 names or the dog logo as a brand; see the [trademark policy](TRADEMARK.md). Planned enterprise modules, if any, will live in a separate repository.
+Hachi is licensed under the [Apache License 2.0](LICENSE) (see also [NOTICE](NOTICE)). The Apache license grants no rights to the Hachi / 小八 names or the dog logo as a brand; see the [trademark policy](TRADEMARK.md).
