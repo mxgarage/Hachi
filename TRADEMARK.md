@@ -39,10 +39,10 @@ policy limits is using them as a **brand** for your own product.
 
 A fork that changes the name and artwork needs no permission.
 
-## Unmodified builds
+## Modified builds
 
-Redistributing an unmodified official release with its name and artwork is
-fine. If you change the code, rename it and replace the artwork.
+Private or internal use of a modified copy needs no permission. If you
+publicly distribute a modified version, give it your own name and logo.
 
 ## Contact
 
