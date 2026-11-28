@@ -22,6 +22,86 @@ func labProbe(_ rawURL: String, expected: String) -> String? {
     } catch { return "unknown" }
 }
 
+// MARK: hachi status --json (read-only; reads a local record file, never touches network or system settings)
+let statusHelp = """
+用法：Hachi status --json
+只读，不修改任何设置：不改网络、路由、DNS、代理、防火墙或系统设置，不联网，不发送任何数据。
+在标准输出打印一份 JSON：schema, status, checked_at, checks, successes, observed_prefix, recorded_prefix, needs_cloud_check。
+status：ok / attention / unverified / setup_incomplete / stale。地址只保留前三段（IPv6 为前 48 位）。
+退出码：0 正常，1 需要留意，2 无法确认或未完成设置。
+记录文件：~/Library/Application Support/Hachi/egress-record.json，可用环境变量 HACHI_STATUS_RECORD 指向别的文件。
+"""
+let statusStaleAfter: TimeInterval = 24 * 3600
+let statusClockSkew: TimeInterval = 300
+
+struct EgressRecord: Decodable {
+    let checked_at: String?
+    let checks: Int?
+    let successes: Int?
+    let observed_ip: String?
+    let recorded_prefix: String?
+}
+
+/// First three dotted segments of an IPv4 address (also accepts "a.b.c", "a.b.c.d", "a.b.c.d/n"), or the first 48 bits of
+/// an IPv6 address. Returns nil when the text is neither. The full address never leaves this function.
+func addressPrefix(_ raw: String?) -> String? {
+    guard var text = raw?.trimmingCharacters(in: .whitespaces), !text.isEmpty, text.count <= 64 else { return nil }
+    if let slash = text.firstIndex(of: "/") { text = String(text[..<slash]) }
+    if text.contains(":") {
+        var addr = in6_addr()
+        guard inet_pton(AF_INET6, text, &addr) == 1 else { return nil }
+        let b = withUnsafeBytes(of: &addr) { Array($0) }
+        return (0..<3).map { String(format: "%x", Int(b[$0 * 2]) << 8 | Int(b[$0 * 2 + 1])) }.joined(separator: ":") + "::/48"
+    }
+    var parts = text.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+    guard parts.count == 3 || parts.count == 4 else { return nil }
+    parts = Array(parts.prefix(3))
+    let nums = parts.map { $0.count <= 3 && $0.allSatisfy { $0.isASCII && $0.isNumber } ? Int($0) : nil }
+    guard nums.allSatisfy({ $0 != nil && $0! <= 255 }) else { return nil }
+    return nums.map { String($0!) }.joined(separator: ".")
+}
+
+/// Pure evaluation: "cannot confirm" wins, so `ok` is only returned when every input is present, valid, fresh,
+/// stable (every check succeeded) and the observed prefix equals the recorded one.
+func egressStatus(record data: Data?, now: Date) -> (json: [String: Any], code: Int32) {
+    var status = "unverified"
+    var checkedAt: Date?
+    var checks: Int?, successes: Int?
+    var observed: String?, recorded: String?
+    if let data = data {
+        if let r = try? JSONDecoder().decode(EgressRecord.self, from: data) {
+            recorded = addressPrefix(r.recorded_prefix)
+            observed = addressPrefix(r.observed_ip)
+            if let c = r.checks, let s = r.successes, c >= 0, s >= 0, s <= c { checks = c; successes = s }
+            let f = ISO8601DateFormatter()
+            checkedAt = r.checked_at.flatMap { f.date(from: $0) }
+            if recorded == nil { status = "setup_incomplete" }
+            else if observed == nil || checks == nil || checks == 0 || checkedAt == nil
+                        || checkedAt!.timeIntervalSince(now) > statusClockSkew || successes != checks { status = "unverified" }
+            else if now.timeIntervalSince(checkedAt!) > statusStaleAfter { status = "stale" }
+            else { status = observed == recorded ? "ok" : "attention" }
+        }
+    } else { status = "setup_incomplete" }
+    let f = ISO8601DateFormatter(); f.timeZone = TimeZone(identifier: "UTC")!
+    let json: [String: Any] = [
+        "schema": 1, "status": status,
+        "checked_at": checkedAt.map { f.string(from: $0) } as Any? ?? NSNull(),
+        "checks": checks as Any? ?? NSNull(), "successes": successes as Any? ?? NSNull(),
+        "observed_prefix": observed as Any? ?? NSNull(), "recorded_prefix": recorded as Any? ?? NSNull(),
+        "needs_cloud_check": status != "ok",
+    ]
+    return (json, status == "ok" ? 0 : status == "attention" ? 1 : 2)
+}
+
+func runStatus() -> Never {
+    let env = ProcessInfo.processInfo.environment["HACHI_STATUS_RECORD"]
+    let url = env.map { URL(fileURLWithPath: $0) } ?? FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/Hachi/egress-record.json")
+    let (json, code) = egressStatus(record: try? Data(contentsOf: url), now: Date())
+    let out = (try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])) ?? Data("{}".utf8)
+    print(String(decoding: out, as: UTF8.self)); exit(code)
+}
+
 private let wagPeriod: TimeInterval = 0.9
 private let frameInterval: TimeInterval = 1.0 / 30
 private let maximumWagAngle = 16
@@ -446,6 +526,8 @@ final class MenuAgent: NSObject, NSApplicationDelegate {
 
 let args = Array(CommandLine.arguments.dropFirst())
 if !args.isEmpty {
+    if args == ["status", "--json"] { runStatus() }
+    if args == ["--help"] || args == ["status", "--help"] || args == ["status"] { print(statusHelp); exit(args == ["status"] ? 2 : 0) }
     if args.count == 3, args[0] == "--lab-probe" {
         guard let status = labProbe(args[1], expected: args[2]) else { exit(2) }
         let data = try JSONEncoder().encode(["status": status, "mode": "synthetic_probe_only"])

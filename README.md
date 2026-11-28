@@ -23,6 +23,10 @@ The pixel comparison of the screenshots with [`tests/ux-baseline/`](tests/ux-bas
 
 The test harness starts a real HTTP observer on loopback. It never runs an official provider client, reads a provider credential or sends traffic off-device. `tests/check.py` is an optional manual preflight smoke test for machines with the two local adapters, not part of acceptance or CI. Neither test represents a provider risk or ban outcome.
 
+## `Hachi status --json`
+
+Read-only: prints one JSON document (`schema`, `status`, `checked_at`, `checks`, `successes`, `observed_prefix`, `recorded_prefix`, `needs_cloud_check`) and changes no setting, makes no network request and sends nothing. `status` is `ok`, `attention`, `unverified`, `setup_incomplete` or `stale`; addresses are cut to the first three segments (IPv6: first 48 bits). Exit code 0 = ok, 1 = attention, 2 = cannot confirm or setup incomplete (anything unreliable is never `ok`). It reads a local record file (`~/Library/Application Support/Hachi/egress-record.json`, or the path in `HACHI_STATUS_RECORD`); nothing in this repo writes that file yet, so without one it reports `setup_incomplete`.
+
 ## Release gate (not met)
 
 - Require at least 95% successful end-to-end operations in each declared workflow (desktop, CLI, browser authorization, MCP where supported), on a preregistered held-out scenario matrix spanning supported OS/architectures. Record counts, environments, repeated seeds, timing and uncertainty. Do not pool easy scenarios to hide a failing workflow.
