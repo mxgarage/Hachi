@@ -15,8 +15,10 @@ project's names or artwork. This policy says what you may do with them.
   `docs/assets/`, `docs/hachi.png` and the app bundle.
 
 The copyright in these files is covered by Apache-2.0 like the rest of the
-repository, so you may copy and modify them as the license says. What this
-policy limits is using them as a **brand** for your own product.
+repository, so you may copy and modify them as the license says, and a fork may keep
+the image files in its source tree. What this policy limits is using the
+name or logo as the **identity** of your own product: its name, app icon,
+store listing, website header or packaging.
 
 ## What you may do without asking
 
