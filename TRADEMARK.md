@@ -32,12 +32,13 @@ store listing, website header or packaging.
 
 - Releasing a fork or derived product under the name Hachi / 小八, or under a
   name or logo that is confusingly similar.
-- Using the logo or character artwork in your own product, app icon, package
-  or website.
+- Using the logo or character artwork as the identity of your own product
+  (app icon, header, packaging).
 - Suggesting that your product is official, endorsed by or affiliated with
   the Hachi maintainers.
-- Using the name for a commercial service, package, domain or app-store
-  listing.
+- Using the name or logo as the name or identity of your own package,
+  domain, service or app-store listing (a description that says "a fork of
+  Hachi" is fine).
 
 A fork that changes the name and artwork needs no permission.
 
